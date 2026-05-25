@@ -1,0 +1,55 @@
+services:
+  # PostgreSQL: NocoDB 的持久化数据底座
+  db_postgres:
+    image: postgres:15-alpine
+    container_name: workflow_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: SecretPassword123
+      POSTGRES_DB: nocodb_meta
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - workflow_network
+    restart: always
+
+  # NocoDB: 无代码数据库管理控制台 (调整为 18080 端口)
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: workflow_nocodb
+    environment:
+      NC_DB: "pg://db_postgres:5432?u=admin&p=SecretPassword123&d=nocodb_meta"
+    ports:
+      - "18080:8080"
+    depends_on:
+      - db_postgres
+    networks:
+      - workflow_network
+    restart: always
+
+  # MinIO: 本地多媒体对象存储 (API 19000，Web 19001 端口)
+  minio:
+    image: minio/minio:latest
+    container_name: workflow_minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "19000:9000"  # API 端口
+      - "19001:9001"  # 控制台 Web 端口
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: MinioSecretPassword123
+    volumes:
+      - minio_data:/data
+    networks:
+      - workflow_network
+    restart: always
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  workflow_network:
+    driver: bridge

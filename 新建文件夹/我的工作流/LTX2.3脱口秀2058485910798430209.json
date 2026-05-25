@@ -1,0 +1,588 @@
+{
+  "154": {
+    "inputs": {
+      "sampler_name": "lcm"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "164": {
+    "inputs": {
+      "frame_rate": [
+        "592",
+        0
+      ],
+      "positive": [
+        "169",
+        0
+      ],
+      "negative": [
+        "420",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXVConditioning"
+    }
+  },
+  "169": {
+    "inputs": {
+      "text": "Shaky handheld medium close-up shot, amateur smartphone video POV from the front row of the audience. The comedian fills the center of the frame. The camera is distinctly unsteady, constantly jittering and wobbling. In the very bottom foreground edge, pitch-black silhouettes of audience members' heads and shoulders are actively bobbing and shaking.\nOn the dimly lit stage with a weathered exposed brick wall backdrop featuring warm tungsten spotlight cones, an Asian female comedian wearing a relaxed-fit cream cable-knit sweater is performing stand-up comedy. Behind her, a glowing marquee sign with legible text \"SGUN\" is visible in the background depth.\nHolding the microphone close, she speaks: \"现在的男生追女生，稍微遇到点挫折就撤了，还美其名曰“及时止损”。\" She pauses with a subtle eye roll and a slight tilt of her head, adjusting her grip on the mic stand with one hand, and the foreground silhouettes shake with chuckles while the camera jolts slightly.\nShe then delivers the punchline with high energy: \"拜托！你买张刮刮乐，明知道没中奖，好歹也得把上面的灰刮干净再扔吧！\" At this moment, the bottom audience silhouettes shake violently, and the handheld camera jiggles and bounces significantly to simulate the person filming laughing hard. She ends by leaning slightly into the lens, tapping the mic head twice with her index finger, and giving a dry, knowing smirk before pulling back. Cinematic lighting, high contrast live comedy club atmosphere.",
+      "clip": [
+        "416",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "358": {
+    "inputs": {
+      "start_step": 0,
+      "end_step": -1,
+      "sigmas": [
+        "514",
+        0
+      ]
+    },
+    "class_type": "VisualizeSigmasKJ",
+    "_meta": {
+      "title": "Visualize Sigmas KJ"
+    }
+  },
+  "414": {
+    "inputs": {
+      "unet_name": "ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNET加载器"
+    }
+  },
+  "416": {
+    "inputs": {
+      "clip_name1": "gemma_3_12B_it.safetensors",
+      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "双CLIP加载器"
+    }
+  },
+  "420": {
+    "inputs": {
+      "conditioning": [
+        "566",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "470": {
+    "inputs": {
+      "vae_name": "LTX23_audio_vae_bf16.safetensors",
+      "device": "main_device",
+      "weight_dtype": "bf16"
+    },
+    "class_type": "VAELoaderKJ",
+    "_meta": {
+      "title": "VAELoader KJ"
+    }
+  },
+  "471": {
+    "inputs": {
+      "samples": [
+        "549",
+        0
+      ],
+      "vae": [
+        "553",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "514": {
+    "inputs": {
+      "scheduler": "linear_quadratic",
+      "steps": 8,
+      "denoise": 1,
+      "model": [
+        "515",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基础调度器"
+    }
+  },
+  "515": {
+    "inputs": {
+      "shift": 8,
+      "model": [
+        "542",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "模型采样算法SD3"
+    }
+  },
+  "542": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "705",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "546": {
+    "inputs": {
+      "frame_rate": [
+        "592",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "kj23i2v-aijuxi",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "no_preview": false,
+      "images": [
+        "471",
+        0
+      ],
+      "audio": [
+        "550",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "合并为视频"
+    }
+  },
+  "549": {
+    "inputs": {
+      "av_latent": [
+        "561",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "550": {
+    "inputs": {
+      "samples": [
+        "549",
+        1
+      ],
+      "audio_vae": [
+        "470",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+      "title": "LTXV Audio VAE Decode"
+    }
+  },
+  "553": {
+    "inputs": {
+      "vae_name": "LTX23_video_vae_bf16.safetensors",
+      "device": "main_device",
+      "weight_dtype": "bf16"
+    },
+    "class_type": "VAELoaderKJ",
+    "_meta": {
+      "title": "VAELoader KJ"
+    }
+  },
+  "561": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 406311521890904,
+      "cfg": 1,
+      "model": [
+        "588",
+        0
+      ],
+      "positive": [
+        "164",
+        0
+      ],
+      "negative": [
+        "164",
+        1
+      ],
+      "sampler": [
+        "154",
+        0
+      ],
+      "sigmas": [
+        "358",
+        0
+      ],
+      "latent_image": [
+        "662",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "自定义采样器"
+    }
+  },
+  "565": {
+    "inputs": {
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
+      "inplace": false,
+      "model": [
+        "542",
+        0
+      ],
+      "nag_cond_video": [
+        "566",
+        0
+      ],
+      "nag_cond_audio": [
+        "566",
+        0
+      ]
+    },
+    "class_type": "LTX2_NAG",
+    "_meta": {
+      "title": "LTX2 NAG"
+    }
+  },
+  "566": {
+    "inputs": {
+      "text": "cartoon, still image, bad quality, subtitles, text, watermark, overlay effects,pc game, console game, video game, cartoon, childish, ugly,subtitles, caption, captions, closed captions, CC, on-screen text, text overlay, words, letters, characters, readable text, typography, subtitles bar, karaoke lyrics, lyric video, lower third, title card, UI, HUD, watermark, logo, signature, timestamp, sticker, banner, scrolling text, low quality, lowres, blurry, flicker, jitter, shaky camera, ghosting, frame doubling, temporal inconsistency, face warp, face melt, asymmetrical eyes, bad teeth, extra teeth, tongue artifact, mouth deformation, lip-sync mismatch, over-smoothing, plastic skin, heavy beauty filter, harsh sharpening, banding, noise, extra fingers, extra hands，字幕,text,Subtitles,Oily skin, reflective skin, strained expression, contorted expression, blurry, oversaturated, pixelated, low resolution, grainy, distorted, noise, compression artifacts, jpeg artifacts, glitches, watermark, text, logo, signature, copyright, subtitles, distorted sound, saturated sound, loud",
+      "clip": [
+        "416",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "584": {
+    "inputs": {
+      "image": "ac62018d723af4ed13a4597dc75fd4f3d1d4b336a81e88e3db92ac48e03f11c0.webp"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "586": {
+    "inputs": {
+      "img_compression": 30,
+      "image": [
+        "596",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTXV Preprocess"
+    }
+  },
+  "588": {
+    "inputs": {
+      "preview_rate": 8,
+      "model": [
+        "565",
+        0
+      ],
+      "vae": [
+        "589",
+        0
+      ]
+    },
+    "class_type": "LTX2SamplingPreviewOverride",
+    "_meta": {
+      "title": "LTX2 Sampling Preview Override"
+    }
+  },
+  "589": {
+    "inputs": {
+      "vae_name": "taeltx2_3.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE加载器"
+    }
+  },
+  "591": {
+    "inputs": {
+      "value": 30
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "592": {
+    "inputs": {
+      "Value": [
+        "591",
+        0
+      ]
+    },
+    "class_type": "DF_Int_to_Float",
+    "_meta": {
+      "title": "Int to Float"
+    }
+  },
+  "593": {
+    "inputs": {
+      "value": 15
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "生成秒数"
+    }
+  },
+  "594": {
+    "inputs": {
+      "value": "a*b+1",
+      "a": [
+        "593",
+        0
+      ],
+      "b": [
+        "591",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "简易运算"
+    }
+  },
+  "595": {
+    "inputs": {
+      "value": 1280
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "最大分辨率"
+    }
+  },
+  "596": {
+    "inputs": {
+      "width": [
+        "595",
+        0
+      ],
+      "height": [
+        "595",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "resize",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 32,
+      "device": "cpu",
+      "image": [
+        "584",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "629": {
+    "inputs": {
+      "lora_name": "Ltx2.3-Licon-VBVR-I2V-LoRA-96000-R32.safetensors",
+      "strength_model": 1,
+      "model": [
+        "414",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器(仅模型)"
+    }
+  },
+  "660": {
+    "inputs": {
+      "frames_number": [
+        "594",
+        0
+      ],
+      "frame_rate": [
+        "591",
+        0
+      ],
+      "batch_size": 1,
+      "audio_vae": [
+        "470",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV Empty Latent Audio"
+    }
+  },
+  "661": {
+    "inputs": {
+      "width": [
+        "665",
+        0
+      ],
+      "height": [
+        "666",
+        0
+      ],
+      "length": [
+        "594",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+      "title": "EmptyLTXVLatentVideo"
+    }
+  },
+  "662": {
+    "inputs": {
+      "video_latent": [
+        "663",
+        0
+      ],
+      "audio_latent": [
+        "660",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "663": {
+    "inputs": {
+      "strength": 1,
+      "bypass": [
+        "664",
+        0
+      ],
+      "vae": [
+        "553",
+        0
+      ],
+      "image": [
+        "586",
+        0
+      ],
+      "latent": [
+        "661",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoConditionOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXV Img To Video Condition Only"
+    }
+  },
+  "664": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "开启文生视频"
+    }
+  },
+  "665": {
+    "inputs": {
+      "value": 720
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "666": {
+    "inputs": {
+      "value": 1280
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "705": {
+    "inputs": {
+      "reserved": 2,
+      "offload_all_vram": false,
+      "anything": [
+        "629",
+        0
+      ]
+    },
+    "class_type": "VRAMReserver",
+    "_meta": {
+      "title": "⚙️LGGCFX_SetReservedVRAM(GB)"
+    }
+  },
+  "707": {
+    "inputs": {
+      "编辑文本": "# Role\n你是一位精通 LTX-2.3 视频模型底层逻辑的“脱口秀短视频导演”兼“提示词工程师”。你的任务是接收用户提供的【脱口秀台词】和【背景招牌名字】，自动生成一段高度专业、带有强烈现场感和互动节奏的 LTX-2.3 英文提示词。\n\n# Core Objectives\n1. **中近景镜头强控 (Medium Close-Up)：** 为了保证 720P 画质下的面部细节（方便套用人物 LoRA），必须在提示词开头强制使用“第一排视角的中近景（Medium close-up）+ 手持晃动 POV”。人物需要占据画面主体。\n2. **喜剧节奏与互动 (Comedic Pacing & Interaction)：** 深度理解用户的台词，拆解出“铺垫（Setup）”和“爆梗（Punchline）”。精准插入“观众轻笑/镜头微晃”到“观众爆笑/剪影剧烈晃动/镜头弹跳”的递进式反馈。\n3. **视觉元素盲盒 (LoRA Safe Randomization)：** \n   - **人物固定为亚洲女性（Asian female）。绝对不要描述长相或面部特征**。只随机生成她的**上半身服装穿搭**（如：oversize西装、紧身吊带、高领毛衣等）。\n   - **舞台背景材质**随机生成（如复古红砖墙、酒红色丝绒幕布、破旧工业风水泥墙等），**绝对禁止出现赛博朋克（Cyberpunk）风格**。\n\n# Rules for Prompt Generation (严格遵守语言规则！)\n- **语言界限（极为重要！）：** 提示词的场景描写、动作描写必须是纯英文，**但是！双引号 `\"\"` 内部的【脱口秀台词】和【招牌名字】，必须原封不动地照抄用户提供的中文原话，绝对禁止翻译成英文！！！**\n- **动作与台词绑定：** 必须描述女演员在说某句台词时的上半身肢体动作和神态，代词全部使用 she/her。\n- **前景遮挡物：** 必须在画面最底端边缘包含观众的黑色剪影（pitch-black silhouettes of audience members in the very bottom foreground edge），以此具象化笑声。\n\n# Output Structure Template (Strictly follow this flow)\n你生成的提示词必须严格按照以下四段式结构组织：\n\n**[Paragraph 1: Camera & POV & Foreground]** \nShaky handheld medium close-up shot, amateur smartphone video POV from the front row of the audience. The comedian fills the center of the frame. The camera is distinctly unsteady, constantly jittering and wobbling. In the very bottom foreground edge, pitch-black silhouettes of audience members' heads and shoulders are actively bobbing and shaking.\n\n**[Paragraph 2: Subject, Stage & Marquee Sign]** \nOn the dimly lit stage with a [纯英文描述：随机材质背景墙], an Asian female comedian wearing a [纯英文描述：随机上半身服装] is performing stand-up comedy. Behind her, a glowing marquee sign with legible text \"[照抄用户输入的中文招牌名字]\" is visible in the background depth.\n\n**[Paragraph 3: The Setup & Initial Reaction]** \nHolding the microphone close, she speaks: \"[照抄中文原话：台词前半段铺垫]\". She pauses with a [纯英文描述：神态/上半身小动作], and the foreground silhouettes shake with chuckles while the camera jolts slightly.\n\n**[Paragraph 4: The Punchline & Explosive Reaction]** \nShe then delivers the punchline with high energy: \"[照抄中文原话：台词高潮/大梗]\". At this moment, the bottom audience silhouettes shake violently, and the handheld camera jiggles and bounces significantly to simulate the person filming laughing hard. She ends by [纯英文描述：与镜头互动的动作]. Cinematic lighting, high contrast live comedy club atmosphere.\n\n---\n# Workflow\n当用户输入：\n招牌名字：[XXX]\n脱口秀台词：[XXX]\n\n你需要：\n1. 简要用中文分析一下台词的节奏（铺垫在哪，爆梗在哪）。\n2. 直接输出符合上述结构的 LTX-2.3 提示词（确保台词是中文）。"
+    },
+    "class_type": "MuyeTextEditOutput",
+    "_meta": {
+      "title": "文本"
+    }
+  },
+  "710": {
+    "inputs": {
+      "image": "b058479af4c059f0d817d49508b7a204b37279632116e4b19107433a3bbba3aa.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  }
+}

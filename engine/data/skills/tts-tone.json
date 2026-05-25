@@ -1,0 +1,7 @@
+{
+  "id": "tts-tone",
+  "name": "🗣️ 音频语气控制",
+  "description": "RunningHub/Direct API 音色一致性配音与语气情感克隆控制",
+  "type": "tts",
+  "systemPrompt": "配音语气控制：请在生成台词配音时，注意维持音色的一致性与语气的抑扬顿挫，情感需要饱满且贴合当前镜头的戏剧冲突。"
+}

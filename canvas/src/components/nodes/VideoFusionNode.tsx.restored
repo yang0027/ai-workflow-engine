@@ -1,0 +1,2034 @@
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/react';
+import { RunningHubService } from '../../services/runninghub.service';
+
+const DEFAULT_PROVIDER_VIDEO_MODELS: Record<string, string[]> = {
+  vidu: ['vidu-high-speed', 'vidu-premium'],
+  volcengine: ['seedance-v1', 'seedance-v2'],
+  minimax: ['minimax-video-v1', 'minimax-video-v2'],
+  ali: ['wanx-video-v1', 'wanx-video-v2']
+};
+
+interface VideoFusionNodeProps {
+  id: string;
+  data: {
+    label?: string;
+    title?: string;
+    progress?: number;
+    inputs?: {
+      prompt?: string;
+      refImage?: string;
+      refVideo?: string;
+      refAudio?: string;
+      image?: string; // Fallback image compatibility
+      audio?: string; // Fallback audio compatibility
+      providerId?: string;
+      model?: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+      activeTab?: 'standard' | 'aix';
+      runningHubTemplateId?: string;
+      [key: string]: any; // 支持动态 aix 表单项
+    };
+    outputs?: {
+      video?: string;
+      errorMsg?: string;
+      output?: string;
+    };
+  };
+  selected?: boolean;
+}
+
+export default function VideoFusionNode({ id, data, selected }: VideoFusionNodeProps) {
+  const { setNodes, setEdges } = useReactFlow();
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+
+
+
+
+
+
+
+  const { connectedPrompt, connectedRefImage, connectedRefVideo, connectedRefAudio } = useMemo(() => {
+    const connectedEdges = edges.filter(e => e.target === id && e.targetHandle === 'input');
+    const connectedPrompts: string[] = [];
+    const connectedImgs: string[] = [];
+    const connectedVids: string[] = [];
+    const connectedAuds: string[] = [];
+
+    connectedEdges.forEach(edge => {
+      const srcNode = nodes.find(n => n.id === edge.source);
+      if (!srcNode) return;
+      const outputs = (srcNode.data?.outputs || {}) as any;
+      const inputs = (srcNode.data?.inputs || {}) as any;
+      
+      const val = outputs.output || outputs.video || outputs.image || outputs.audio || outputs.prompt || outputs.text || outputs.storyboard || inputs.text || '';
+      if (!val) return;
+
+      if (typeof val === 'string') {
+        const lowerVal = val.toLowerCase();
+        if (srcNode.type === 'tts-service' || lowerVal.includes('audio') || val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.ogg') || val.endsWith('.m4a') || val.startsWith('data:audio/')) {
+          connectedAuds.push(val);
+        } else if (srcNode.type === 'image-service' || (srcNode.type === 'upload-node' && (lowerVal.includes('image') || val.startsWith('data:image/') || val.endsWith('.png') || val.endsWith('.jpg') || val.endsWith('.jpeg') || val.endsWith('.webp')))) {
+          connectedImgs.push(val);
+        } else if (srcNode.type === 'video-fusion' || (srcNode.type === 'upload-node' && (lowerVal.includes('video') || val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') || val.startsWith('data:video/')))) {
+          connectedVids.push(val);
+        } else {
+          connectedPrompts.push(val);
+        }
+      }
+    });
+
+    return {
+      connectedPrompt: connectedPrompts.join('\n'),
+      connectedRefImage: connectedImgs[0] || '',
+      connectedRefVideo: connectedVids[0] || '',
+      connectedRefAudio: connectedAuds[0] || ''
+    };
+  }, [edges, nodes, id]);
+
+
+
+
+
+
+
+
+  const [runningHubTemplateId, setRunningHubTemplateId] = useState<string>(data.inputs?.runningHubTemplateId || 'rh_wf_video_fusion');
+  const [videoModels, setVideoModels] = useState<string[]>(['vidu-high-speed', 'seedance-v1', 'ali-video-premium']);
+  const [fusing, setFusing] = useState(false);
+  const [fusedVideo, setFusedVideo] = useState('');
+  const [settings, setSettings] = useState<any>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [localName, setLocalName] = useState(data.label || 'VIDEO');
+
+  useEffect(() => {
+    if (data.label) {
+      setLocalName(data.label);
+    }
+  }, [data.label]);
+
+  const handleSaveName = () => {
+    setIsEditingName(false);
+    if (localName.trim()) {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                label: localName.trim(),
+              },
+            };
+          }
+          return n;
+        })
+      );
+    }
+  };
+
+  // 获取 RunningHub 的模板工作流列表
+  const workflows = useMemo(() => RunningHubService.getWorkflows(), []);
+  const currentTemplate = useMemo(() => {
+    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
+  const workflows = useMemo(() => RunningHubService.getWorkflows(), []);
+  const currentTemplate = useMemo(() => {
+    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
+  }, [workflows, runningHubTemplateId]);
+
+  // 初始化获取全局配置视频模型
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('http://localhost:3000/api/v1/settings');
+        if (res.ok) {
+          const settingsData = await res.json();
+          setSettings(settingsData);
+          if (settingsData.model_cache?.video) {
+            setVideoModels(settingsData.model_cache.video);
+          }
+        }
+      } catch (e) {
+        console.error('加载 VideoFusionNode 外部依赖失败:', e);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const providerId = data.inputs?.providerId || 'vidu';
+
+  const currentProviderModels = useMemo(() => {
+    const defaultModels = DEFAULT_PROVIDER_VIDEO_MODELS[providerId] || videoModels;
+    if (!settings || !settings.providers || !settings.providers[providerId]) {
+      return defaultModels;
+    }
+    const provider = settings.providers[providerId];
+    if (!provider.models || !Array.isArray(provider.models)) {
+      return defaultModels;
+    }
+    const videoKeywords = /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma/i;
+    const filtered = provider.models.filter((m: string) => videoKeywords.test(m));
+    return filtered.length > 0 ? filtered : defaultModels;
+  }, [settings, providerId, videoModels]);
+
+  const model = data.inputs?.model || currentProviderModels[0] || 'vidu-high-speed';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    setRunningHubTemplateId(templateId);
+    handleInputChange('runningHubTemplateId', templateId);
+  };
+
+  const handleDelete = () => {
+    setNodes((nds) => nds.filter((n) => n.id !== id));
+    setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+  };
+
+  // 文件读取处理函数
+  const readAsBase64 = (file: File, field: string) => {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (outputUrl) {
+          const finalUrl = outputUrl.startsWith('http') ? outputUrl : `http://localhost:4000${outputUrl}`;
+          setFusedVideo(finalUrl);
+
+          setNodes((nodes) =>
+            nodes.map((n) => {
+              if (n.id === id) {
+                return {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    outputs: {
+                      ...((n.data as any)?.outputs || {}),
+                      video: finalUrl,
+                      output: finalUrl,
+                      errorMsg: ''
+                    }
+                  }
+                };
+              }
+              return n;
+            })
+          );
+
+          window.dispatchEvent(
+            new CustomEvent('add-success-log', {
+              detail: {
+                nodeId: id,
+                nodeName: data.title || '视频融合 (Video)',
+                model: currentTemplate.name,
+                errorMsg: '云端 RunningHub 任务执行成功 ✅',
+                outputUrl: finalUrl,
+                type: 'video'
+              }
+            })
+          );
+        } else {
+          throw new Error('云端任务已完成，但未返回有效的视频成果 URL。');
+        }
+
+      } else {
+        // Standard 模式
+        if (!finalImage.trim()) {
+          alert('请输入图片 URL/Base64，或者将上游节点连接至图片参考输入！');
+          setFusing(false);
+          return;
+        }
+        if (!finalAudio.trim()) {
+          alert('请输入音频 URL/Base64，或者将上游节点连接至声音参考输入！');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      ...((n.data as any)?.outputs || {}),
+                      video: video,
+                      output: video,
+                      errorMsg: ''
+                    }
+                      errorMsg: ''
+                    }
+                  }
+                };
+              }
+              return n;
+            })
+          );
+
+          window.dispatchEvent(
+            new CustomEvent('add-success-log', {
+              detail: {
+                nodeId: id,
+                nodeName: data.title || '视频融合 (Video)',
+                model: model,
+                errorMsg: `视频生成成功 ✅ 已完成音视频融合合成`
+              }
+            })
+          );
+        } else {
+          const errorReason = resData.error || resData.message || '未生成视频链接';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    document.body.removeChild(a);
+  };
+
+  // 快捷连线派生助手
+  const handleSpawnImageService = () => {
+    if ((window as any).spawnLinkedNode) {
+      (window as any).spawnLinkedNode(id, 'image-service', 'left');
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  const handleSpawnSingleUpload = () => {
+    if ((window as any).spawnLinkedNode) {
+      (window as any).spawnLinkedNode(id, 'upload-node', 'left', { fileType: 'image' });
+      window.dispatchEvent(
+        new CustomEvent('open-large-modal', {
+          detail: { tab: 'assets', nodeTarget: id, type: 'image' }
+        })
+      );
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  const handleSpawnDoubleUpload = () => {
+    if ((window as any).spawnLinkedNode) {
+      (window as any).spawnLinkedNode(id, 'upload-node', 'left', { fileType: 'image', label: '🖼️ 图像首帧' });
+      setTimeout(() => {
+        (window as any).spawnLinkedNode(id, 'upload-node', 'left', { fileType: 'image', label: '🖼️ 图像尾帧' });
+      }, 100);
+      window.dispatchEvent(
+        new CustomEvent('open-large-modal', {
+          detail: { tab: 'assets', nodeTarget: id, type: 'image' }
+        })
+      );
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  const handleSpawnTTSService = () => {
+    if ((window as any).spawnLinkedNode) {
+      (window as any).spawnLinkedNode(id, 'tts-service', 'right');
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  const progressPercent = data.progress !== undefined ? data.progress : (fusing ? 45 : 0);
+  const showVid = fusedVideo || data.outputs?.video;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ) : showVid ? (
+          <video 
+            src={showVid} 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              justifyContent: 'center',
+              gap: '6px', 
+              padding: '12px',
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(20, 10, 10, 0.8) 100%)',
+              width: '100%',
+              height: '100%',
+              borderRadius: '15px'
+            }}
+          >
+            <span style={{ fontSize: '24px', animation: 'pulse 1.5s infinite' }}>⚠️</span>
+              ⬇️
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
+              style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              title="全屏预览"
+            >
+              ⛶
+          border: selected 
+            ? '1.5px solid rgba(168, 85, 247, 0.85)' 
+            : '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: selected 
+            ? '0 0 25px rgba(168, 85, 247, 0.35)' 
+            : '0 8px 32px rgba(0, 0, 0, 0.4)',
+          borderRadius: '16px',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      >
+        {/* 悬浮下载/全屏小圆纽 */}
+        {showVid && selected && (
+          <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '6px', zIndex: 20 }}>
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+              style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              title="下载视频"
+            >
+              ⬇️
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
+              style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              title="全屏预览"
+            >
+              ⛶
+            </button>
+          </div>
+        )}
+
+        {data.outputs?.errorMsg ? (
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              gap: '6px', 
+              padding: '12px',
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(20, 10, 10, 0.8) 100%)',
+              width: '100%',
+              height: '100%',
+              borderRadius: '15px'
+            }}
+          >
+            <span style={{ fontSize: '24px', animation: 'pulse 1.5s infinite' }}>⚠️</span>
+            <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#ef4444' }}>生成失败</span>
+            <span 
+              style={{ 
+                fontSize: '8px', 
+                color: 'rgba(255,255,255,0.4)', 
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                lineHeight: '1.3',
+                maxHeight: '32px'
+              }}
+              title={data.outputs.errorMsg}
+            >
+              {data.outputs.errorMsg}
+            </span>
+          </div>
+        ) : showVid ? (
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        position={Position.Right}
+        id="output"
+        style={{
+          ...handleStyle,
+          right: '-12px'
+        }}
+      >
+        ＋
+      </Handle>
+
+      {/* 选中态底部悬浮配置面板 - 580px 玻璃拟态选项卡面板 */}
+      {selected && (
+        <div
+          className="nodrag"
+          style={{
+            position: 'absolute',
+            top: '200px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '580px',
+            background: 'rgba(11, 15, 26, 0.95)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65), 0 0 30px rgba(168, 85, 247, 0.1)',
+            borderRadius: '16px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            zIndex: 1000,
+            animation: 'slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+        >
+          <style>{`
+            @keyframes slideUp {
+              from { transform: translate(-50%, 15px); opacity: 0; }
+              to { transform: translate(-50%, 0); opacity: 1; }
+            }
+          `}</style>
+
+          {/* 选项卡 Tab 切换栏 */}
+          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '2px
+
+
+
+
+
+
+
+
+                color: activeTab === 'standard' ? '#fff' : 'rgba(255,255,255,0.5)',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                outline: 'none'
+              }}
+            >
+              📹 基础视频合成
+            </button>
+            <button 
+              onClick={() => handleTabChange('aix')}
+              style={{
+                flex: 1,
+                padding: '6px 12px',
+                borderRadius: '6px',
+                background: activeTab === 'aix' ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                border: 'none',
+                color: activeTab === 'aix' ? '#fff' : 'rgba(255,255,255,0.5)',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                outline: 'none'
+              }}
+            >
+              ⚡ RunningHub (aix) 工作流
+            </button>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid rgba(255, 255, 255, 0.08)', margin: '2px 0' }} />
+
+          {/* Tab 1: 基础生视频面板 */}
+          {activeTab === 'standard' && (
+            <>
+              {/* 服务商与模型选择 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', display: 'block', marginBottom: '4px' }}>视频服务商:</span>
+                  <select
+                    value={providerId}
+                    onChange={(e) => handleInputChange('providerId', e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      color: '#fff',
+                      fontSize: '11px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="vidu">Vidu (视频生成)</option>
+                    <option value="volcengine">Volcengine (Seedance)</option>
+                    <option value="minimax">MiniMax (视频渲染)</option>
+                    <option value="ali">Ali DashScope</option>
+                  </select>
+                </div>
+                <div>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', display: 'block', marginBottom: '4px' }}>视频融合模型:</span>
+                  <select
+                    value={model}
+                    onChange={(e) => handleInputChange('model', e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  </span>
+                )}
+              </div>
+
+              {/* 2. 动态参数表单 */}
+              {currentTemplate && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)', maxHeight: '180px', overflowY: 'auto' }}>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px', marginBottom: '4px' }}>
+                    📋 云端工作流动态参数列表
+                  </span>
+                  
+                  {currentTemplate.nodeInfoList.map((info) => {
+                    const lowerName = info.fieldName.toLowerCase();
+                    const isText = lowerName === 'text' || lowerName === 'prompt';
+                    const isImg = lowerName === 'image' || lowerName === 'faceref' || lowerName === 'img' || lowerName === 'refimage';
+                    const isAudio = lowerName === 'audio' || lowerName === 'refaudio';
+                    const isVideo = lowerName === 'video' || lowerName === 'refvideo';
+                    const inputKey = `${info.nodeId}_${info.fieldName}`;
+                    const currentVal = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : info.fieldValue;
+
+                    return (
+                      <div key={inputKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      fontSize: '12px',
+                      lineHeight: '1.5',
+                      fontFamily: 'var(--font-sans)'
+                    }}
+                  />
+                </div>
+
+                {/* 快捷提及 Pills 栏 */}
+                {connectedImages.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: '10px' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.45)' }}>📎 快捷绑定参考图:</span>
+                    {connectedImages.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          const textarea = document.getElementById(`textarea-${id}`) as HTMLTextAreaElement;
+                          const cursor = textarea ? textarea.selectionStart : currentPrompt.length;
+                          const textBefore = currentPrompt.substring(0, cursor);
+                          const textAfter = currentPrompt.substring(cursor);
+                          const nextPrompt = textBefore + `@图${idx + 1} ` + textAfter;
+                          handleInputChange('prompt', nextPrompt);
+                          if (textarea) textarea.focus();
+                        }}
+                        style={{
+                          background: 'rgba(168, 85, 247, 0.15)',
+                          border: '1px solid rgba(168, 85, 247, 0.3)',
+                          borderRadius: '4px',
+                          color: '#e9d5ff',
+                          padding: '2px 6px',
+                          fontSize: '9px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.3)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
+                      >
+                        🖼️ 图 {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 二级模型服务商/模型悬浮高级联动 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>视频模型服务商:</span>
+                <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  {[
+                    { id: 'volcengine', label: '火山引擎 (Seedance)' },
+                    { id: 'vidu', label: 'Vidu视频' },
+                    { id: 'minimax', label: '海螺视频' },
+                    { id: 'ali', label: '通义万相' }
+                  ].map(v => (
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(168, 85, 247, 0.2)'
+              }}
+            />
+            <div style={{ color: '#fff', fontSize: '13px', marginTop: '16px', fontWeight: 600, textShadow: '0 2px 4px #000', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <span>🎬 Toonflow Canvas 高清全屏视频播放预览</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+                style={{ padding: '6px 16px', background: 'rgba(168, 85, 247, 0.3)', border: '1px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              >
+                ⬇️ 极速下载视频
+              </button>
+            </div>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '50%',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            color: isSel ? '#fff' : 'rgba(255,255,255,0.4)',
+                            fontSize: '9.5px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            outline: 'none'
+                          }}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. 画面比例组 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', width: '60px' }}>画面比例:</span>
+                  <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: '2px' }}>
+                    {['自适应', '16:9', '9:16', '4:3', '1:1', '3:4', '21:9'].map(r => {
+                      const isSel = (data.inputs?.aspectRatio || '16:9') === r;
+                      return (
+                        <button
+                          key={r}
+                          onClick={() => {
+                            const curClarity = data.inputs?.clarity || '720p';
+                            updateSizeFromSpecs(r, curClarity);
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            background: isSel ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                            color: isSel ? '#fff' : 'rgba(255,255,255,0.4)',
+                            fontSize: '9.5px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            outline: 'none'
+                          }}
+                        >
+                          {r}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. 是否生成音频组 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', width: '60px' }}>生成音频:</span>
+                  <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['是', '否'].map(opt => {
+                      const isSel = (data.inputs?.generateAudio || '否') === opt;
+                      return (
+                        <button
+                          key={opt}
+                          onClick={() => handleInputChange('generateAudio', opt)}
+                          style={{
+     
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              borderRadius: '6px',
+                              padding: '6px 8px',
+                              color: '#fff',
+                              fontSize: '11px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <hr style={{ border: 'none', borderTop: '1px solid rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(168, 85, 247, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(168, 85, 247, 0.3)';
+                }}
+              >
+                🎙️ “视频配音”助手
+              </button>
+            </div>
+
+            {/* 开始生成渐变按钮 */}
+            <button
+              onClick={handleVideoFusion}
+              disabled={fusing}
+              style={{
+                background: 'linear-gradient(135deg, hsl(262, 83%, 58%) 0%, hsl(316, 73%, 52%) 100%)',
+                border: 'none',
+                borderRadius: '24px',
+                color: '#fff',
+                padding: '8px 24px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(168, 85, 247, 0.3)',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                outline: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(168, 85, 247, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(168, 85, 247, 0.3)';
+              }}
+            >
+              {fusing ? '📹 正在融合中...' : '开始生成'}
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* 全屏 Lightbox 高清全屏预览弹层 */}
+      {isFullscreen && (
+        <div
+          style={{
+            position: 'fixed',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(168, 85, 247, 0.2)'
+              }}
+            />
+            <div style={{ color: '#fff', fontSize: '13px', marginTop: '16px', fontWeight: 600, textShadow: '0 2px 4px #000', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <span>🎬 Toonflow Canvas 高清全屏视频播放预览</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+                style={{ padding: '6px 16px', background: 'rgba(168, 85, 247, 0.3)', border: '1px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              >
+                ⬇️ 极速下载视频
+              </button>
+            </div>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '50%',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(168, 85, 247, 0.2)'
+              }}
+            />
+            <div style={{ color: '#fff', fontSize: '13px', marginTop: '16px', fontWeight: 600, textShadow: '0 2px 4px #000', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <span>🎬 Toonflow Canvas 高清全屏视频播放预览</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+                style={{ padding: '6px 16px', background: 'rgba(168, 85, 247, 0.3)', border: '1px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              >
+                ⬇️ 极速下载视频
+              </button>
+            </div>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '50%',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(168, 85, 247, 0.2)'
+              }}
+            />
+            <div style={{ color: '#fff', fontSize: '13px', marginTop: '16px', fontWeight: 600, textShadow: '0 2px 4px #000', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <span>🎬 Toonflow Canvas 高清全屏视频播放预览</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+                style={{ padding: '6px 16px', background: 'rgba(168, 85, 247, 0.3)', border: '1px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', color: '#fff', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+              >
+                ⬇️ 极速下载视频
+              </button>
+            </div>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '50%',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

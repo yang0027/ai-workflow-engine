@@ -1,0 +1,123 @@
+{
+  "9": {
+    "inputs": {
+      "model_path": "s2-pro-fp8",
+      "text": [
+        "31",
+        0
+      ],
+      "language": "auto",
+      "device": "auto",
+      "precision": "bfloat16",
+      "attention": "sage_attention",
+      "max_new_tokens": 0,
+      "chunk_length": 200,
+      "temperature": 0.8,
+      "top_p": 0.8,
+      "repetition_penalty": 1.1,
+      "seed": 1711321345,
+      "keep_model_loaded": true,
+      "offload_to_cpu": false,
+      "compile_model": "the sun is shining brightly in the clear blue sky. A gentle breeze is blowing and birds are singing sweet melodies. The world is full of beauty and wonder waiting to be explored.",
+      "reference_text": [
+        "17",
+        4
+      ],
+      "reference_audio": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "FishS2VoiceCloneTTS",
+    "_meta": {
+      "title": "Fish S2 Voice Clone TTS"
+    }
+  },
+  "10": {
+    "inputs": {
+      "value": "欢迎使用无极的工作流，在这里你可以生成很多有趣的效果，哈哈，不信，要不试试看？悄悄告诉你，会有小惊喜奥~！还不快试试~！~！~！"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "文本"
+    }
+  },
+  "11": {
+    "inputs": {
+      "text": [
+        "31",
+        1
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "展示文本"
+    }
+  },
+  "12": {
+    "inputs": {
+      "filename_prefix": "audio/ComfyUI",
+      "quality": "V0",
+      "audioUI": "",
+      "audio": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "SaveAudioMP3",
+    "_meta": {
+      "title": "结果"
+    }
+  },
+  "17": {
+    "inputs": {
+      "音频文件": "58f311509a4841cea3d2a9abdbfc7314344dbf6d5f5442d69cfdfb16e7da1eff.MP3",
+      "帧率": 25,
+      "起始秒": 0,
+      "结束秒": 6,
+      "尾静音秒": 2,
+      "音频分离": true,
+      "识别字幕": true,
+      "时间戳字幕": false
+    },
+    "class_type": "WujiAudioLoader",
+    "_meta": {
+      "title": "☯️无极音频加载器"
+    }
+  },
+  "31": {
+    "inputs": {
+      "pwd": "",
+      "prompt_1": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "RHHiddenNodes",
+    "_meta": {
+      "title": "Group Nodes(Password)"
+    }
+  },
+  "32": {
+    "inputs": {
+      "清理模式": "极限清理",
+      "任意连接": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "WujiCleaner",
+    "_meta": {
+      "title": "☯️无极清理器"
+    }
+  },
+  "37": {
+    "inputs": {
+      "preview": ""
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  }
+}

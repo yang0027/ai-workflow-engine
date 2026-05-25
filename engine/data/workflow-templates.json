@@ -1,0 +1,2380 @@
+[
+  {
+    "id": "b6ab595e-20f5-49c3-9429-086f427df31f",
+    "name": "本地测试",
+    "source": "local_comfyui",
+    "capability": "image",
+    "rawWorkflowJson": {
+      "197": {
+        "inputs": {
+          "filename_prefix": "Kontext",
+          "images": [
+            "251",
+            0
+          ]
+        },
+        "class_type": "SaveImage",
+        "_meta": {
+          "title": "保存图像"
+        }
+      },
+      "204": {
+        "inputs": {
+          "image": "model-9.png"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "加载图像"
+        }
+      },
+      "205": {
+        "inputs": {
+          "image": "model-13.png"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "加载图像"
+        }
+      },
+      "251": {
+        "inputs": {
+          "image": [
+            "253",
+            0
+          ]
+        },
+        "class_type": "FluxKontextImageScale",
+        "_meta": {
+          "title": "图像缩放为FluxKontext"
+        }
+      },
+      "253": {
+        "inputs": {
+          "direction": "right",
+          "match_image_size": true,
+          "spacing_width": 0,
+          "spacing_color": "white",
+          "image1": [
+            "204",
+            0
+          ],
+          "image2": [
+            "205",
+            0
+          ]
+        },
+        "class_type": "ImageStitch",
+        "_meta": {
+          "title": "图像拼接"
+        }
+      },
+      "256": {
+        "inputs": {
+          "images": [
+            "251",
+            0
+          ]
+        },
+        "class_type": "PreviewImage",
+        "_meta": {
+          "title": "预览图像"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "197_filename_prefix",
+        "nodeId": "197",
+        "classType": "SaveImage",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [197] (SaveImage)",
+        "type": "text",
+        "defaultValue": "Kontext",
+        "exposed": false
+      },
+      {
+        "id": "204_image",
+        "nodeId": "204",
+        "classType": "LoadImage",
+        "fieldName": "image",
+        "label": "图片 [204] (LoadImage)",
+        "type": "image",
+        "defaultValue": "model-9.png",
+        "exposed": true
+      },
+      {
+        "id": "205_image",
+        "nodeId": "205",
+        "classType": "LoadImage",
+        "fieldName": "image",
+        "label": "图片 [205] (LoadImage)",
+        "type": "image",
+        "defaultValue": "model-13.png",
+        "exposed": true
+      },
+      {
+        "id": "253_direction",
+        "nodeId": "253",
+        "classType": "ImageStitch",
+        "fieldName": "direction",
+        "label": "direction [253] (ImageStitch)",
+        "type": "text",
+        "defaultValue": "right",
+        "exposed": false
+      },
+      {
+        "id": "253_match_image_size",
+        "nodeId": "253",
+        "classType": "ImageStitch",
+        "fieldName": "match_image_size",
+        "label": "match_image_size [253] (ImageStitch)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "253_spacing_width",
+        "nodeId": "253",
+        "classType": "ImageStitch",
+        "fieldName": "spacing_width",
+        "label": "spacing_width [253] (ImageStitch)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "253_spacing_color",
+        "nodeId": "253",
+        "classType": "ImageStitch",
+        "fieldName": "spacing_color",
+        "label": "spacing_color [253] (ImageStitch)",
+        "type": "text",
+        "defaultValue": "white",
+        "exposed": false
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "image"
+    },
+    "createdAt": "2026-05-24T23:40:28.122Z",
+    "updatedAt": "2026-05-24T23:43:14.577Z"
+  },
+  {
+    "id": "b36d66bc-bd9d-4166-a5cc-909a45296b24",
+    "name": "耀光板",
+    "source": "runninghub",
+    "capability": "workflow",
+    "workflowRef": "2058512795817308161",
+    "webLink": "https://www.runninghub.cn/workflow/2058512795817308161",
+    "rawWorkflowJson": {
+      "11": {
+        "inputs": {
+          "vae_name": "z_image_turbo-vae.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "VAE加载器"
+        }
+      },
+      "12": {
+        "inputs": {
+          "clip_name": "qwen_3_4b.safetensors",
+          "type": "lumina2",
+          "device": "default"
+        },
+        "class_type": "CLIPLoader",
+        "_meta": {
+          "title": "CLIP加载器"
+        }
+      },
+      "14": {
+        "inputs": {
+          "lora_name": "Z-Image-Fun-Lora-Distill-8-Steps-2603-ComfyUI.safetensors",
+          "strength_model": 0.45000000000000007,
+          "model": [
+            "23",
+            0
+          ]
+        },
+        "class_type": "LoraLoaderModelOnly",
+        "_meta": {
+          "title": "LoRA加载器(仅模型)"
+        }
+      },
+      "16": {
+        "inputs": {
+          "text": "泛黄，发绿，模糊，低分辨率，低质量图像，扭曲的肢体，诡异的外观，丑陋，AI感，噪点，网格感，JPEG压缩条纹，异常的肢体，水印，乱码，意义不明的字符，泛蓝",
+          "clip": [
+            "12",
+            0
+          ]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP文本编码器"
+        }
+      },
+      "17": {
+        "inputs": {
+          "samples": [
+            "22",
+            0
+          ],
+          "vae": [
+            "11",
+            0
+          ]
+        },
+        "class_type": "VAEDecode",
+        "_meta": {
+          "title": "VAE解码"
+        }
+      },
+      "18": {
+        "inputs": {
+          "unet_name": "z_image_bf16.safetensors",
+          "weight_dtype": "default"
+        },
+        "class_type": "UNETLoader",
+        "_meta": {
+          "title": "UNET加载器"
+        }
+      },
+      "21": {
+        "inputs": {
+          "width": 1080,
+          "height": 1920,
+          "batch_size": 1
+        },
+        "class_type": "EmptyLatentImage",
+        "_meta": {
+          "title": "空Latent"
+        }
+      },
+      "22": {
+        "inputs": {
+          "seed": 454188297084606,
+          "steps": 8,
+          "cfg": 1,
+          "sampler_name": "res_2s",
+          "scheduler": "bong_tangent",
+          "denoise": 1,
+          "model": [
+            "14",
+            0
+          ],
+          "positive": [
+            "24",
+            0
+          ],
+          "negative": [
+            "16",
+            0
+          ],
+          "latent_image": [
+            "21",
+            0
+          ]
+        },
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "K采样器"
+        }
+      },
+      "23": {
+        "inputs": {
+          "lora_name": "Kook_Zimage_瑶光.safetensors",
+          "strength_model": 1.0000000000000002,
+          "model": [
+            "18",
+            0
+          ]
+        },
+        "class_type": "LoraLoaderModelOnly",
+        "_meta": {
+          "title": "LoRA加载器(仅模型)"
+        }
+      },
+      "24": {
+        "inputs": {
+          "text": [
+            "33",
+            0
+          ],
+          "clip": [
+            "12",
+            0
+          ]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP文本编码器"
+        }
+      },
+      "27": {
+        "inputs": {
+          "filename_prefix": "ComfyUI",
+          "images": [
+            "29",
+            0
+          ]
+        },
+        "class_type": "SaveImage",
+        "_meta": {
+          "title": "保存图像"
+        }
+      },
+      "28": {
+        "inputs": {
+          "grain_intensity": 0.015000000000000003,
+          "saturation_mix": 0.45000000000000007,
+          "batch_size": 4,
+          "images": [
+            "17",
+            0
+          ]
+        },
+        "class_type": "FastFilmGrain",
+        "_meta": {
+          "title": "🎞️ Fast Film Grain"
+        }
+      },
+      "29": {
+        "inputs": {
+          "brightness": 0.9000000000000001,
+          "contrast": 1.2000000000000002,
+          "saturation": 0.8000000000000002,
+          "image": [
+            "28",
+            0
+          ]
+        },
+        "class_type": "LayerColor: BrightnessContrastV2",
+        "_meta": {
+          "title": "LayerColor: Brightness Contrast V2"
+        }
+      },
+      "32": {
+        "inputs": {
+          "unet_name": "moodyPornMix_v10DPO.safetensors",
+          "weight_dtype": "default"
+        },
+        "class_type": "UNETLoader",
+        "_meta": {
+          "title": "UNET加载器"
+        }
+      },
+      "33": {
+        "inputs": {
+          "text": "超高清写实摄影，杰作，最佳质量，8K UHD，raw photo，无滤镜直出，超高细节，锐利焦点，楼道声控灯光，手机随拍质感，CCD 感，日常居家纪实写真。22 岁成年女性，东亚面孔，慵懒松弛的气质，冷白皮，完全自然素颜，原生皮肤质感，五官柔和舒展，黑色齐肩短发随意凌乱，正提着垃圾袋站在居民楼楼道里，看向镜头，神情慵懒随性，身形纤细匀称。身着粉色纯棉家居服套装，宽松版型，无任何装饰，脚上穿着棉拖鞋，朴实居家穿搭。位于老式居民楼楼道，背景是斑驳的墙面、楼梯扶手、声控灯、邻居家的防盗门，傍晚昏暗的环境，只有声控灯的暖光打亮人物，环境充满真实生活气息。光影：室内暖光 + 侧光，声控灯暖光打亮人物，画面光影自然，明暗对比柔和，无调色无滤镜，暖色调，低饱和，松弛慵懒的日常氛围。技术：50mm 标准镜头，平视角度，中景半身构图，中心构图，浅景深背景虚化，原生皮肤纹理，轻微颗粒感，8K 超高清分辨率。\n"
+        },
+        "class_type": "CR Text",
+        "_meta": {
+          "title": "文本"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "11_vae_name",
+        "nodeId": "11",
+        "classType": "VAELoader",
+        "fieldName": "vae_name",
+        "label": "vae_name [11] (VAELoader)",
+        "type": "select",
+        "defaultValue": "z_image_turbo-vae.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "12_clip_name",
+        "nodeId": "12",
+        "classType": "CLIPLoader",
+        "fieldName": "clip_name",
+        "label": "clip_name [12] (CLIPLoader)",
+        "type": "select",
+        "defaultValue": "qwen_3_4b.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "14_lora_name",
+        "nodeId": "14",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "lora_name",
+        "label": "lora_name [14] (LoraLoaderModelOnly)",
+        "type": "select",
+        "defaultValue": "Z-Image-Fun-Lora-Distill-8-Steps-2603-ComfyUI.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "14_strength_model",
+        "nodeId": "14",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "strength_model",
+        "label": "strength_model [14] (LoraLoaderModelOnly)",
+        "type": "number",
+        "defaultValue": 0.45000000000000007,
+        "exposed": false
+      },
+      {
+        "id": "16_text",
+        "nodeId": "16",
+        "classType": "CLIPTextEncode",
+        "fieldName": "text",
+        "label": "文本 [16] (CLIPTextEncode)",
+        "type": "text",
+        "defaultValue": "泛黄，发绿，模糊，低分辨率，低质量图像，扭曲的肢体，诡异的外观，丑陋，AI感，噪点，网格感，JPEG压缩条纹，异常的肢体，水印，乱码，意义不明的字符，泛蓝",
+        "exposed": false
+      },
+      {
+        "id": "18_unet_name",
+        "nodeId": "18",
+        "classType": "UNETLoader",
+        "fieldName": "unet_name",
+        "label": "unet_name [18] (UNETLoader)",
+        "type": "select",
+        "defaultValue": "z_image_bf16.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "18_weight_dtype",
+        "nodeId": "18",
+        "classType": "UNETLoader",
+        "fieldName": "weight_dtype",
+        "label": "weight_dtype [18] (UNETLoader)",
+        "type": "text",
+        "defaultValue": "default",
+        "exposed": false
+      },
+      {
+        "id": "21_width",
+        "nodeId": "21",
+        "classType": "EmptyLatentImage",
+        "fieldName": "width",
+        "label": "宽度 [21] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 1080,
+        "exposed": false
+      },
+      {
+        "id": "21_height",
+        "nodeId": "21",
+        "classType": "EmptyLatentImage",
+        "fieldName": "height",
+        "label": "高度 [21] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 1920,
+        "exposed": false
+      },
+      {
+        "id": "21_batch_size",
+        "nodeId": "21",
+        "classType": "EmptyLatentImage",
+        "fieldName": "batch_size",
+        "label": "batch_size [21] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "22_seed",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "seed",
+        "label": "随机种子 [22] (KSampler)",
+        "type": "number",
+        "defaultValue": 454188297084606,
+        "exposed": false
+      },
+      {
+        "id": "22_steps",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "steps",
+        "label": "步数 [22] (KSampler)",
+        "type": "number",
+        "defaultValue": 8,
+        "exposed": false
+      },
+      {
+        "id": "22_cfg",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "cfg",
+        "label": "CFG [22] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "22_sampler_name",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "sampler_name",
+        "label": "sampler_name [22] (KSampler)",
+        "type": "select",
+        "defaultValue": "res_2s",
+        "exposed": false
+      },
+      {
+        "id": "22_scheduler",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "scheduler",
+        "label": "scheduler [22] (KSampler)",
+        "type": "select",
+        "defaultValue": "bong_tangent",
+        "exposed": false
+      },
+      {
+        "id": "22_denoise",
+        "nodeId": "22",
+        "classType": "KSampler",
+        "fieldName": "denoise",
+        "label": "重绘强度 [22] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "23_lora_name",
+        "nodeId": "23",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "lora_name",
+        "label": "lora_name [23] (LoraLoaderModelOnly)",
+        "type": "select",
+        "defaultValue": "Kook_Zimage_瑶光.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "23_strength_model",
+        "nodeId": "23",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "strength_model",
+        "label": "strength_model [23] (LoraLoaderModelOnly)",
+        "type": "number",
+        "defaultValue": 1.0000000000000002,
+        "exposed": false
+      },
+      {
+        "id": "27_filename_prefix",
+        "nodeId": "27",
+        "classType": "SaveImage",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [27] (SaveImage)",
+        "type": "text",
+        "defaultValue": "ComfyUI",
+        "exposed": false
+      },
+      {
+        "id": "28_grain_intensity",
+        "nodeId": "28",
+        "classType": "FastFilmGrain",
+        "fieldName": "grain_intensity",
+        "label": "grain_intensity [28] (FastFilmGrain)",
+        "type": "number",
+        "defaultValue": 0.015000000000000003,
+        "exposed": false
+      },
+      {
+        "id": "28_saturation_mix",
+        "nodeId": "28",
+        "classType": "FastFilmGrain",
+        "fieldName": "saturation_mix",
+        "label": "saturation_mix [28] (FastFilmGrain)",
+        "type": "number",
+        "defaultValue": 0.45000000000000007,
+        "exposed": false
+      },
+      {
+        "id": "28_batch_size",
+        "nodeId": "28",
+        "classType": "FastFilmGrain",
+        "fieldName": "batch_size",
+        "label": "batch_size [28] (FastFilmGrain)",
+        "type": "number",
+        "defaultValue": 4,
+        "exposed": false
+      },
+      {
+        "id": "29_brightness",
+        "nodeId": "29",
+        "classType": "LayerColor: BrightnessContrastV2",
+        "fieldName": "brightness",
+        "label": "brightness [29] (LayerColor: BrightnessContrastV2)",
+        "type": "number",
+        "defaultValue": 0.9000000000000001,
+        "exposed": false
+      },
+      {
+        "id": "29_contrast",
+        "nodeId": "29",
+        "classType": "LayerColor: BrightnessContrastV2",
+        "fieldName": "contrast",
+        "label": "contrast [29] (LayerColor: BrightnessContrastV2)",
+        "type": "number",
+        "defaultValue": 1.2000000000000002,
+        "exposed": false
+      },
+      {
+        "id": "29_saturation",
+        "nodeId": "29",
+        "classType": "LayerColor: BrightnessContrastV2",
+        "fieldName": "saturation",
+        "label": "saturation [29] (LayerColor: BrightnessContrastV2)",
+        "type": "number",
+        "defaultValue": 0.8000000000000002,
+        "exposed": false
+      },
+      {
+        "id": "32_unet_name",
+        "nodeId": "32",
+        "classType": "UNETLoader",
+        "fieldName": "unet_name",
+        "label": "unet_name [32] (UNETLoader)",
+        "type": "select",
+        "defaultValue": "moodyPornMix_v10DPO.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "32_weight_dtype",
+        "nodeId": "32",
+        "classType": "UNETLoader",
+        "fieldName": "weight_dtype",
+        "label": "weight_dtype [32] (UNETLoader)",
+        "type": "text",
+        "defaultValue": "default",
+        "exposed": false
+      },
+      {
+        "id": "33_text",
+        "nodeId": "33",
+        "classType": "CR Text",
+        "fieldName": "text",
+        "label": "文本 [33] (CR Text)",
+        "type": "text",
+        "defaultValue": "超高清写实摄影，杰作，最佳质量，8K UHD，raw photo，无滤镜直出，超高细节，锐利焦点，楼道声控灯光，手机随拍质感，CCD 感，日常居家纪实写真。22 岁成年女性，东亚面孔，慵懒松弛的气质，冷白皮，完全自然素颜，原生皮肤质感，五官柔和舒展，黑色齐肩短发随意凌乱，正提着垃圾袋站在居民楼楼道里，看向镜头，神情慵懒随性，身形纤细匀称。身着粉色纯棉家居服套装，宽松版型，无任何装饰，脚上穿着棉拖鞋，朴实居家穿搭。位于老式居民楼楼道，背景是斑驳的墙面、楼梯扶手、声控灯、邻居家的防盗门，傍晚昏暗的环境，只有声控灯的暖光打亮人物，环境充满真实生活气息。光影：室内暖光 + 侧光，声控灯暖光打亮人物，画面光影自然，明暗对比柔和，无调色无滤镜，暖色调，低饱和，松弛慵懒的日常氛围。技术：50mm 标准镜头，平视角度，中景半身构图，中心构图，浅景深背景虚化，原生皮肤纹理，轻微颗粒感，8K 超高清分辨率。\n",
+        "exposed": true
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "image"
+    },
+    "createdAt": "2026-05-24T11:40:55.493Z",
+    "updatedAt": "2026-05-24T11:47:43.953Z"
+  },
+  {
+    "id": "f9342816-ecb0-443d-850d-366b9fe7c430",
+    "name": "最强视频修复",
+    "source": "runninghub",
+    "capability": "video",
+    "workflowRef": "2058511344994967553",
+    "webLink": "https://www.runninghub.cn/workflow/2058511344994967553",
+    "rawWorkflowJson": {
+      "19": {
+        "inputs": {
+          "model": "ema_vae_fp16.safetensors",
+          "device": "cuda:0",
+          "encode_tiled": true,
+          "encode_tile_size": 1024,
+          "encode_tile_overlap": 128,
+          "decode_tiled": true,
+          "decode_tile_size": 1024,
+          "decode_tile_overlap": 128,
+          "tile_debug": "false",
+          "offload_device": "cpu"
+        },
+        "class_type": "SeedVR2LoadVAEModel",
+        "_meta": {
+          "title": "SeedVR2 (Down)Load VAE Model"
+        }
+      },
+      "21": {
+        "inputs": {
+          "model": "seedvr2_ema_3b_fp16.safetensors",
+          "device": "cuda:0",
+          "blocks_to_swap": 32,
+          "swap_io_components": true,
+          "offload_device": "cpu",
+          "attention_mode": "sdpa"
+        },
+        "class_type": "SeedVR2LoadDiTModel",
+        "_meta": {
+          "title": "SeedVR2 (Down)Load DiT Model"
+        }
+      },
+      "24": {
+        "inputs": {
+          "video_info": [
+            "49",
+            3
+          ]
+        },
+        "class_type": "VHS_VideoInfo",
+        "_meta": {
+          "title": "视频信息"
+        }
+      },
+      "25": {
+        "inputs": {
+          "video": "c78153199a656e0bc88e709b7b318a4a1dc6b4a120757d0015f15c7ab21ed2dd.mp4",
+          "force_rate": 0,
+          "force_size": "Disabled",
+          "custom_width": 0,
+          "custom_height": 0,
+          "frame_load_cap": 0,
+          "skip_first_frames": 0,
+          "select_every_nth": 1,
+          "format": "AnimateDiff"
+        },
+        "class_type": "VHS_LoadVideo",
+        "_meta": {
+          "title": "加载视频"
+        }
+      },
+      "26": {
+        "inputs": {
+          "video_info": [
+            "25",
+            3
+          ]
+        },
+        "class_type": "VHS_VideoInfo",
+        "_meta": {
+          "title": "视频信息"
+        }
+      },
+      "27": {
+        "inputs": {
+          "frame_rate": [
+            "26",
+            5
+          ],
+          "loop_count": 0,
+          "filename_prefix": "AnimateDiff",
+          "format": "video/h264-mp4",
+          "pix_fmt": "yuv420p",
+          "crf": 19,
+          "save_metadata": true,
+          "trim_to_audio": false,
+          "pingpong": false,
+          "save_output": true,
+          "no_preview": false,
+          "images": [
+            "29",
+            0
+          ],
+          "audio": [
+            "25",
+            2
+          ]
+        },
+        "class_type": "VHS_VideoCombine",
+        "_meta": {
+          "title": "合并为视频"
+        }
+      },
+      "28": {
+        "inputs": {
+          "upscale_method": "lanczos",
+          "megapixels": 0.5000000000000001,
+          "resolution_steps": 1,
+          "image": [
+            "25",
+            0
+          ]
+        },
+        "class_type": "ImageScaleToTotalPixels",
+        "_meta": {
+          "title": "图像按像素缩放"
+        }
+      },
+      "29": {
+        "inputs": {
+          "seed": 2518473179,
+          "resolution": [
+            "30",
+            0
+          ],
+          "max_resolution": 4096,
+          "batch_size": 41,
+          "uniform_batch_size": false,
+          "color_correction": "lab",
+          "temporal_overlap": 0,
+          "prepend_frames": 0,
+          "input_noise_scale": 0,
+          "latent_noise_scale": 0,
+          "offload_device": "cpu",
+          "enable_debug": false,
+          "image": [
+            "28",
+            0
+          ],
+          "dit": [
+            "21",
+            0
+          ],
+          "vae": [
+            "19",
+            0
+          ]
+        },
+        "class_type": "SeedVR2VideoUpscaler",
+        "_meta": {
+          "title": "SeedVR2 Video Upscaler (v2.5.15)"
+        }
+      },
+      "30": {
+        "inputs": {
+          "value": 1280
+        },
+        "class_type": "INTConstant",
+        "_meta": {
+          "title": "整数常量"
+        }
+      },
+      "38": {
+        "inputs": {
+          "frame_rate": [
+            "24",
+            5
+          ],
+          "loop_count": 0,
+          "filename_prefix": "AnimateDiff",
+          "format": "video/h264-mp4",
+          "pix_fmt": "yuv420p",
+          "crf": 19,
+          "save_metadata": true,
+          "trim_to_audio": false,
+          "pingpong": false,
+          "save_output": true,
+          "no_preview": false,
+          "images": [
+            "68",
+            0
+          ],
+          "audio": [
+            "49",
+            2
+          ]
+        },
+        "class_type": "VHS_VideoCombine",
+        "_meta": {
+          "title": "合并为视频"
+        }
+      },
+      "43": {
+        "inputs": {
+          "value": 2
+        },
+        "class_type": "JWInteger",
+        "_meta": {
+          "title": "Integer"
+        }
+      },
+      "49": {
+        "inputs": {
+          "video": "86ffd7207e8a178251dc6024e91ef92e174ac44a54354d59434f5aa623487de0.mp4",
+          "force_rate": 0,
+          "force_size": "Disabled",
+          "custom_width": 0,
+          "custom_height": 0,
+          "frame_load_cap": 0,
+          "skip_first_frames": 0,
+          "select_every_nth": 1,
+          "format": "AnimateDiff"
+        },
+        "class_type": "VHS_LoadVideo",
+        "_meta": {
+          "title": "加载视频"
+        }
+      },
+      "68": {
+        "inputs": {
+          "model": "FlashVSR-v1.1",
+          "mode": "tiny",
+          "scale": [
+            "43",
+            0
+          ],
+          "tiled_vae": true,
+          "tiled_dit": true,
+          "unload_dit": false,
+          "seed": 803276664495840,
+          "frames": [
+            "49",
+            0
+          ]
+        },
+        "class_type": "FlashVSRNode",
+        "_meta": {
+          "title": "FlashVSR Ultra-Fast"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "19_encode_tiled",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "encode_tiled",
+        "label": "encode_tiled [19] (SeedVR2LoadVAEModel)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "19_encode_tile_size",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "encode_tile_size",
+        "label": "encode_tile_size [19] (SeedVR2LoadVAEModel)",
+        "type": "number",
+        "defaultValue": 1024,
+        "exposed": false
+      },
+      {
+        "id": "19_encode_tile_overlap",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "encode_tile_overlap",
+        "label": "encode_tile_overlap [19] (SeedVR2LoadVAEModel)",
+        "type": "number",
+        "defaultValue": 128,
+        "exposed": false
+      },
+      {
+        "id": "19_decode_tiled",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "decode_tiled",
+        "label": "decode_tiled [19] (SeedVR2LoadVAEModel)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "19_decode_tile_size",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "decode_tile_size",
+        "label": "decode_tile_size [19] (SeedVR2LoadVAEModel)",
+        "type": "number",
+        "defaultValue": 1024,
+        "exposed": false
+      },
+      {
+        "id": "19_decode_tile_overlap",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "decode_tile_overlap",
+        "label": "decode_tile_overlap [19] (SeedVR2LoadVAEModel)",
+        "type": "number",
+        "defaultValue": 128,
+        "exposed": false
+      },
+      {
+        "id": "19_tile_debug",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "tile_debug",
+        "label": "tile_debug [19] (SeedVR2LoadVAEModel)",
+        "type": "text",
+        "defaultValue": "false",
+        "exposed": false
+      },
+      {
+        "id": "19_offload_device",
+        "nodeId": "19",
+        "classType": "SeedVR2LoadVAEModel",
+        "fieldName": "offload_device",
+        "label": "offload_device [19] (SeedVR2LoadVAEModel)",
+        "type": "text",
+        "defaultValue": "cpu",
+        "exposed": false
+      },
+      {
+        "id": "21_blocks_to_swap",
+        "nodeId": "21",
+        "classType": "SeedVR2LoadDiTModel",
+        "fieldName": "blocks_to_swap",
+        "label": "blocks_to_swap [21] (SeedVR2LoadDiTModel)",
+        "type": "number",
+        "defaultValue": 32,
+        "exposed": false
+      },
+      {
+        "id": "21_swap_io_components",
+        "nodeId": "21",
+        "classType": "SeedVR2LoadDiTModel",
+        "fieldName": "swap_io_components",
+        "label": "swap_io_components [21] (SeedVR2LoadDiTModel)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "21_offload_device",
+        "nodeId": "21",
+        "classType": "SeedVR2LoadDiTModel",
+        "fieldName": "offload_device",
+        "label": "offload_device [21] (SeedVR2LoadDiTModel)",
+        "type": "text",
+        "defaultValue": "cpu",
+        "exposed": false
+      },
+      {
+        "id": "21_attention_mode",
+        "nodeId": "21",
+        "classType": "SeedVR2LoadDiTModel",
+        "fieldName": "attention_mode",
+        "label": "attention_mode [21] (SeedVR2LoadDiTModel)",
+        "type": "text",
+        "defaultValue": "sdpa",
+        "exposed": false
+      },
+      {
+        "id": "25_video",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "video",
+        "label": "视频 [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": "c78153199a656e0bc88e709b7b318a4a1dc6b4a120757d0015f15c7ab21ed2dd.mp4",
+        "exposed": false
+      },
+      {
+        "id": "25_force_rate",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "force_rate",
+        "label": "force_rate [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "25_force_size",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "force_size",
+        "label": "force_size [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": "Disabled",
+        "exposed": false
+      },
+      {
+        "id": "25_custom_width",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "custom_width",
+        "label": "自定义宽度 [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "25_custom_height",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "custom_height",
+        "label": "自定义高度 [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "25_frame_load_cap",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "frame_load_cap",
+        "label": "frame_load_cap [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "25_skip_first_frames",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "skip_first_frames",
+        "label": "skip_first_frames [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "25_select_every_nth",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "select_every_nth",
+        "label": "select_every_nth [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "25_format",
+        "nodeId": "25",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "format",
+        "label": "format [25] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": "AnimateDiff",
+        "exposed": false
+      },
+      {
+        "id": "27_loop_count",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "loop_count",
+        "label": "loop_count [27] (VHS_VideoCombine)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "27_filename_prefix",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [27] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "AnimateDiff",
+        "exposed": false
+      },
+      {
+        "id": "27_format",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "format",
+        "label": "format [27] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "video/h264-mp4",
+        "exposed": false
+      },
+      {
+        "id": "27_pix_fmt",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "pix_fmt",
+        "label": "pix_fmt [27] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "yuv420p",
+        "exposed": false
+      },
+      {
+        "id": "27_crf",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "crf",
+        "label": "crf [27] (VHS_VideoCombine)",
+        "type": "number",
+        "defaultValue": 19,
+        "exposed": false
+      },
+      {
+        "id": "27_save_metadata",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "save_metadata",
+        "label": "save_metadata [27] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "27_trim_to_audio",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "trim_to_audio",
+        "label": "trim_to_audio [27] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "27_pingpong",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "pingpong",
+        "label": "pingpong [27] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "27_save_output",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "save_output",
+        "label": "save_output [27] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "27_no_preview",
+        "nodeId": "27",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "no_preview",
+        "label": "no_preview [27] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "28_upscale_method",
+        "nodeId": "28",
+        "classType": "ImageScaleToTotalPixels",
+        "fieldName": "upscale_method",
+        "label": "upscale_method [28] (ImageScaleToTotalPixels)",
+        "type": "text",
+        "defaultValue": "lanczos",
+        "exposed": false
+      },
+      {
+        "id": "28_megapixels",
+        "nodeId": "28",
+        "classType": "ImageScaleToTotalPixels",
+        "fieldName": "megapixels",
+        "label": "megapixels [28] (ImageScaleToTotalPixels)",
+        "type": "number",
+        "defaultValue": 0.5000000000000001,
+        "exposed": false
+      },
+      {
+        "id": "28_resolution_steps",
+        "nodeId": "28",
+        "classType": "ImageScaleToTotalPixels",
+        "fieldName": "resolution_steps",
+        "label": "resolution_steps [28] (ImageScaleToTotalPixels)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "29_seed",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "seed",
+        "label": "随机种子 [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 2518473179,
+        "exposed": false
+      },
+      {
+        "id": "29_max_resolution",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "max_resolution",
+        "label": "max_resolution [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 4096,
+        "exposed": false
+      },
+      {
+        "id": "29_batch_size",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "batch_size",
+        "label": "batch_size [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 41,
+        "exposed": false
+      },
+      {
+        "id": "29_uniform_batch_size",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "uniform_batch_size",
+        "label": "uniform_batch_size [29] (SeedVR2VideoUpscaler)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "29_color_correction",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "color_correction",
+        "label": "color_correction [29] (SeedVR2VideoUpscaler)",
+        "type": "text",
+        "defaultValue": "lab",
+        "exposed": false
+      },
+      {
+        "id": "29_temporal_overlap",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "temporal_overlap",
+        "label": "temporal_overlap [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "29_prepend_frames",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "prepend_frames",
+        "label": "prepend_frames [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "29_input_noise_scale",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "input_noise_scale",
+        "label": "input_noise_scale [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "29_latent_noise_scale",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "latent_noise_scale",
+        "label": "latent_noise_scale [29] (SeedVR2VideoUpscaler)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "29_offload_device",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "offload_device",
+        "label": "offload_device [29] (SeedVR2VideoUpscaler)",
+        "type": "text",
+        "defaultValue": "cpu",
+        "exposed": false
+      },
+      {
+        "id": "29_enable_debug",
+        "nodeId": "29",
+        "classType": "SeedVR2VideoUpscaler",
+        "fieldName": "enable_debug",
+        "label": "enable_debug [29] (SeedVR2VideoUpscaler)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "30_value",
+        "nodeId": "30",
+        "classType": "INTConstant",
+        "fieldName": "value",
+        "label": "value [30] (INTConstant)",
+        "type": "number",
+        "defaultValue": 1280,
+        "exposed": false
+      },
+      {
+        "id": "38_loop_count",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "loop_count",
+        "label": "loop_count [38] (VHS_VideoCombine)",
+        "type": "number",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "38_filename_prefix",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [38] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "AnimateDiff",
+        "exposed": false
+      },
+      {
+        "id": "38_format",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "format",
+        "label": "format [38] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "video/h264-mp4",
+        "exposed": false
+      },
+      {
+        "id": "38_pix_fmt",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "pix_fmt",
+        "label": "pix_fmt [38] (VHS_VideoCombine)",
+        "type": "text",
+        "defaultValue": "yuv420p",
+        "exposed": false
+      },
+      {
+        "id": "38_crf",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "crf",
+        "label": "crf [38] (VHS_VideoCombine)",
+        "type": "number",
+        "defaultValue": 19,
+        "exposed": false
+      },
+      {
+        "id": "38_save_metadata",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "save_metadata",
+        "label": "save_metadata [38] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "38_trim_to_audio",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "trim_to_audio",
+        "label": "trim_to_audio [38] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "38_pingpong",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "pingpong",
+        "label": "pingpong [38] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "38_save_output",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "save_output",
+        "label": "save_output [38] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "38_no_preview",
+        "nodeId": "38",
+        "classType": "VHS_VideoCombine",
+        "fieldName": "no_preview",
+        "label": "no_preview [38] (VHS_VideoCombine)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "43_value",
+        "nodeId": "43",
+        "classType": "JWInteger",
+        "fieldName": "value",
+        "label": "value [43] (JWInteger)",
+        "type": "number",
+        "defaultValue": 2,
+        "exposed": false
+      },
+      {
+        "id": "49_video",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "video",
+        "label": "视频上传",
+        "type": "video",
+        "defaultValue": "86ffd7207e8a178251dc6024e91ef92e174ac44a54354d59434f5aa623487de0.mp4",
+        "exposed": true
+      },
+      {
+        "id": "49_force_rate",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "force_rate",
+        "label": "force_rate [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "49_force_size",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "force_size",
+        "label": "force_size [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": "Disabled",
+        "exposed": false
+      },
+      {
+        "id": "49_custom_width",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "custom_width",
+        "label": "自定义宽度 [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "49_custom_height",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "custom_height",
+        "label": "自定义高度 [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "49_frame_load_cap",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "frame_load_cap",
+        "label": "frame_load_cap [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "49_skip_first_frames",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "skip_first_frames",
+        "label": "skip_first_frames [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 0,
+        "exposed": false
+      },
+      {
+        "id": "49_select_every_nth",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "select_every_nth",
+        "label": "select_every_nth [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "49_format",
+        "nodeId": "49",
+        "classType": "VHS_LoadVideo",
+        "fieldName": "format",
+        "label": "format [49] (VHS_LoadVideo)",
+        "type": "video",
+        "defaultValue": "AnimateDiff",
+        "exposed": false
+      },
+      {
+        "id": "68_tiled_vae",
+        "nodeId": "68",
+        "classType": "FlashVSRNode",
+        "fieldName": "tiled_vae",
+        "label": "tiled_vae [68] (FlashVSRNode)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "68_tiled_dit",
+        "nodeId": "68",
+        "classType": "FlashVSRNode",
+        "fieldName": "tiled_dit",
+        "label": "tiled_dit [68] (FlashVSRNode)",
+        "type": "boolean",
+        "defaultValue": true,
+        "exposed": false
+      },
+      {
+        "id": "68_unload_dit",
+        "nodeId": "68",
+        "classType": "FlashVSRNode",
+        "fieldName": "unload_dit",
+        "label": "unload_dit [68] (FlashVSRNode)",
+        "type": "boolean",
+        "defaultValue": false,
+        "exposed": false
+      },
+      {
+        "id": "68_seed",
+        "nodeId": "68",
+        "classType": "FlashVSRNode",
+        "fieldName": "seed",
+        "label": "随机种子 [68] (FlashVSRNode)",
+        "type": "number",
+        "defaultValue": 803276664495840,
+        "exposed": false
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "video"
+    },
+    "createdAt": "2026-05-24T11:36:19.993Z",
+    "updatedAt": "2026-05-24T11:48:39.943Z"
+  },
+  {
+    "id": "1f0799a5-d23d-4187-8a6f-ce91c8331132",
+    "name": "千问tts3",
+    "source": "runninghub",
+    "capability": "audio",
+    "workflowRef": "2047548327255871489",
+    "rawWorkflowJson": {
+      "1": {
+        "inputs": {
+          "model_path": "Qwen3-TTS-12Hz-1.7B-Base",
+          "precision": "bf16",
+          "device": "cuda",
+          "attn_implementation": "sdpa"
+        },
+        "class_type": "TDQwen3TTSModelLoader",
+        "_meta": {
+          "title": "TD Qwen3 TTS Model Loader"
+        }
+      },
+      "20": {
+        "inputs": {
+          "audio": "187b96976b5c34344bdbb5e86df0ac17af780aa7fa06a5af8f7de129fabb00ca.wav",
+          "audioUI": ""
+        },
+        "class_type": "LoadAudio",
+        "_meta": {
+          "title": "Load Audio"
+        }
+      },
+      "21": {
+        "inputs": {
+          "audio": "8f82cfbddf27a677659b244dddd6d663c9427ea9e5631f643476de26e9cf2353.MP3",
+          "audioUI": ""
+        },
+        "class_type": "LoadAudio",
+        "_meta": {
+          "title": "Load Audio"
+        }
+      },
+      "22": {
+        "inputs": {
+          "model_path": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "precision": "bf16",
+          "device": "cuda",
+          "attn_implementation": "sdpa"
+        },
+        "class_type": "TDQwen3TTSModelLoader",
+        "_meta": {
+          "title": "TD Qwen3 TTS Model Loader"
+        }
+      },
+      "24": {
+        "inputs": {
+          "name": "秦龙",
+          "audio": [
+            "20",
+            0
+          ]
+        },
+        "class_type": "TDQwen3TTSDefineSpeaker",
+        "_meta": {
+          "title": "TD Qwen3 TTS Define Speaker"
+        }
+      },
+      "25": {
+        "inputs": {
+          "name": "秦龙",
+          "audio": [
+            "21",
+            0
+          ]
+        },
+        "class_type": "TDQwen3TTSDefineSpeaker",
+        "_meta": {
+          "title": "TD Qwen3 TTS Define Speaker"
+        }
+      },
+      "77": {
+        "inputs": {
+          "speakers_config": [
+            "326",
+            0
+          ],
+          "Manage Speakers": "Edit",
+          "model": [
+            "22",
+            0
+          ]
+        },
+        "class_type": "TDQwen3TTSBatchGenerateSpeaker",
+        "_meta": {
+          "title": "TD Qwen3 TTS Batch Generate Speaker"
+        }
+      },
+      "79": {
+        "inputs": {
+          "text": [
+            "332",
+            0
+          ],
+          "interval": 0.5,
+          "seed": 445876547375589,
+          "model": [
+            "1",
+            0
+          ],
+          "speaker_list": [
+            "77",
+            0
+          ],
+          "speaker_1": [
+            "24",
+            0
+          ],
+          "speaker_2": [
+            "25",
+            0
+          ]
+        },
+        "class_type": "TDQwen3TTSMultiDialog",
+        "_meta": {
+          "title": "TD Qwen3 TTS Multi Dialog"
+        }
+      },
+      "277": {
+        "inputs": {
+          "filename_prefix": "audio/ComfyUI",
+          "audioUI": "",
+          "audio": [
+            "79",
+            0
+          ]
+        },
+        "class_type": "SaveAudio",
+        "_meta": {
+          "title": "Save Audio (FLAC)"
+        }
+      },
+      "326": {
+        "inputs": {
+          "text": "[{\\\"name\\\":\\\"未知\\\",\\\"instruct\\\":\\\"低沉有磁性，语气冷漠疏离，呼吸平稳，语速适中，吐字清晰干脆。\\\",\\\"text\\\":\\\"未知:看看什么情况\\\"},{\\\"name\\\":\\\"未知\\\",\\\"instruct\\\":\\\"低沉威严声线，语气冰冷轻蔑，嘴角挂起冷笑，语速拖沓，尾音刻意拉长。\\\",\\\"text\\\":\\\"未知:就拿臣弟肩膀上这颗脑袋把好吧\\\"},{\\\"name\\\":\\\"秦风\\\",\\\"instruct\\\":\\\"年轻男性音色，隐忍决绝，气息深沉下压，语速匀速平稳，咬字极重透着坚定。\\\",\\\"text\\\":\\\"秦风:我试试地上茎\\\"},{\\\"name\\\":\\\"秦龙\\\",\\\"instruct\\\":\\\"嗓音微哑具威压，情绪骤然暴怒，喉部肌肉紧绷，语速急促铿锵，伴随粗重喘息。\\\",\\\"text\\\":\\\"秦龙:你拿什么活？你还活不活，蠢货！毒瘴废铁之地，\\\"},{\\\"name\\\":\\\"秦风\\\",\\\"instruct\\\":\\\"年轻男性底色，视死如归，胸腔共鸣强烈，语速沉稳略作停顿，字字扎实不飘浮。\\\",\\\"text\\\":\\\"秦风:就拿臣弟肩膀上这颗脑袋。\\\"}]"
+        },
+        "class_type": "CR Text",
+        "_meta": {
+          "title": "🔤 CR Text"
+        }
+      },
+      "332": {
+        "inputs": {
+          "text": "秦龙:你拿什么活？你还活不活，蠢货！毒瘴废铁之地"
+        },
+        "class_type": "CR Text",
+        "_meta": {
+          "title": "🔤 CR Text"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "1_model_path",
+        "nodeId": "1",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "model_path",
+        "label": "model_path [1] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "Qwen3-TTS-12Hz-1.7B-Base",
+        "exposed": false
+      },
+      {
+        "id": "1_precision",
+        "nodeId": "1",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "precision",
+        "label": "precision [1] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "bf16",
+        "exposed": false
+      },
+      {
+        "id": "1_attn_implementation",
+        "nodeId": "1",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "attn_implementation",
+        "label": "attn_implementation [1] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "sdpa",
+        "exposed": false
+      },
+      {
+        "id": "20_audio",
+        "nodeId": "20",
+        "classType": "LoadAudio",
+        "fieldName": "audio",
+        "label": "音频 [20] (LoadAudio)",
+        "type": "audio",
+        "defaultValue": "187b96976b5c34344bdbb5e86df0ac17af780aa7fa06a5af8f7de129fabb00ca.wav",
+        "exposed": false
+      },
+      {
+        "id": "20_audioUI",
+        "nodeId": "20",
+        "classType": "LoadAudio",
+        "fieldName": "audioUI",
+        "label": "audioUI [20] (LoadAudio)",
+        "type": "audio",
+        "defaultValue": "上传音频",
+        "exposed": true
+      },
+      {
+        "id": "21_audio",
+        "nodeId": "21",
+        "classType": "LoadAudio",
+        "fieldName": "audio",
+        "label": "音频 [21] (LoadAudio)",
+        "type": "audio",
+        "defaultValue": "8f82cfbddf27a677659b244dddd6d663c9427ea9e5631f643476de26e9cf2353.MP3",
+        "exposed": false
+      },
+      {
+        "id": "21_audioUI",
+        "nodeId": "21",
+        "classType": "LoadAudio",
+        "fieldName": "audioUI",
+        "label": "上传音频",
+        "type": "audio",
+        "defaultValue": "上传音频",
+        "exposed": true
+      },
+      {
+        "id": "22_model_path",
+        "nodeId": "22",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "model_path",
+        "label": "model_path [22] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "exposed": false
+      },
+      {
+        "id": "22_precision",
+        "nodeId": "22",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "precision",
+        "label": "precision [22] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "bf16",
+        "exposed": false
+      },
+      {
+        "id": "22_attn_implementation",
+        "nodeId": "22",
+        "classType": "TDQwen3TTSModelLoader",
+        "fieldName": "attn_implementation",
+        "label": "attn_implementation [22] (TDQwen3TTSModelLoader)",
+        "type": "text",
+        "defaultValue": "sdpa",
+        "exposed": false
+      },
+      {
+        "id": "24_name",
+        "nodeId": "24",
+        "classType": "TDQwen3TTSDefineSpeaker",
+        "fieldName": "name",
+        "label": "20#节点人物名称",
+        "type": "text",
+        "defaultValue": "秦龙",
+        "exposed": true
+      },
+      {
+        "id": "25_name",
+        "nodeId": "25",
+        "classType": "TDQwen3TTSDefineSpeaker",
+        "fieldName": "name",
+        "label": "21#人物名称",
+        "type": "text",
+        "defaultValue": "秦龙",
+        "exposed": true
+      },
+      {
+        "id": "77_Manage_Speakers",
+        "nodeId": "77",
+        "classType": "TDQwen3TTSBatchGenerateSpeaker",
+        "fieldName": "Manage Speakers",
+        "label": "Manage Speakers [77] (TDQwen3TTSBatchGenerateSpeaker)",
+        "type": "text",
+        "defaultValue": "Edit",
+        "exposed": false
+      },
+      {
+        "id": "79_interval",
+        "nodeId": "79",
+        "classType": "TDQwen3TTSMultiDialog",
+        "fieldName": "interval",
+        "label": "interval [79] (TDQwen3TTSMultiDialog)",
+        "type": "number",
+        "defaultValue": 0.5,
+        "exposed": false
+      },
+      {
+        "id": "79_seed",
+        "nodeId": "79",
+        "classType": "TDQwen3TTSMultiDialog",
+        "fieldName": "seed",
+        "label": "随机种子 [79] (TDQwen3TTSMultiDialog)",
+        "type": "number",
+        "defaultValue": 445876547375589,
+        "exposed": false
+      },
+      {
+        "id": "277_filename_prefix",
+        "nodeId": "277",
+        "classType": "SaveAudio",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [277] (SaveAudio)",
+        "type": "text",
+        "defaultValue": "audio/ComfyUI",
+        "exposed": false
+      },
+      {
+        "id": "277_audioUI",
+        "nodeId": "277",
+        "classType": "SaveAudio",
+        "fieldName": "audioUI",
+        "label": "audioUI [277] (SaveAudio)",
+        "type": "text",
+        "defaultValue": "",
+        "exposed": false
+      },
+      {
+        "id": "326_text",
+        "nodeId": "326",
+        "classType": "CR Text",
+        "fieldName": "text",
+        "label": "提示词",
+        "type": "text",
+        "defaultValue": "[{\\\"name\\\":\\\"未知\\\",\\\"instruct\\\":\\\"低沉有磁性，语气冷漠疏离，呼吸平稳，语速适中，吐字清晰干脆。\\\",\\\"text\\\":\\\"未知:看看什么情况\\\"},{\\\"name\\\":\\\"未知\\\",\\\"instruct\\\":\\\"低沉威严声线，语气冰冷轻蔑，嘴角挂起冷笑，语速拖沓，尾音刻意拉长。\\\",\\\"text\\\":\\\"未知:就拿臣弟肩膀上这颗脑袋把好吧\\\"},{\\\"name\\\":\\\"秦风\\\",\\\"instruct\\\":\\\"年轻男性音色，隐忍决绝，气息深沉下压，语速匀速平稳，咬字极重透着坚定。\\\",\\\"text\\\":\\\"秦风:我试试地上茎\\\"},{\\\"name\\\":\\\"秦龙\\\",\\\"instruct\\\":\\\"嗓音微哑具威压，情绪骤然暴怒，喉部肌肉紧绷，语速急促铿锵，伴随粗重喘息。\\\",\\\"text\\\":\\\"秦龙:你拿什么活？你还活不活，蠢货！毒瘴废铁之地，\\\"},{\\\"name\\\":\\\"秦风\\\",\\\"instruct\\\":\\\"年轻男性底色，视死如归，胸腔共鸣强烈，语速沉稳略作停顿，字字扎实不飘浮。\\\",\\\"text\\\":\\\"秦风:就拿臣弟肩膀上这颗脑袋。\\\"}]",
+        "exposed": true
+      },
+      {
+        "id": "332_text",
+        "nodeId": "332",
+        "classType": "CR Text",
+        "fieldName": "text",
+        "label": "台词",
+        "type": "text",
+        "defaultValue": "秦龙:你拿什么活？你还活不活，蠢货！毒瘴废铁之地",
+        "exposed": true
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "audio"
+    },
+    "description": "自定义音色，可更换参考音频",
+    "createdAt": "2026-05-24T08:32:50.159Z",
+    "updatedAt": "2026-05-24T09:05:29.547Z"
+  },
+  {
+    "id": "c1994669-dda1-4226-a9c4-44b519aea06f",
+    "name": "图生图",
+    "source": "runninghub",
+    "capability": "image",
+    "rawWorkflowJson": {
+      "21": {
+        "inputs": {
+          "lora_name": "consistence_edit_v2.safetensors",
+          "strength_model": 0.15000000000000002,
+          "model": [
+            "208",
+            0
+          ]
+        },
+        "class_type": "LoraLoaderModelOnly",
+        "_meta": {
+          "title": "Load LoRA"
+        }
+      },
+      "161": {
+        "inputs": {
+          "conditioning": [
+            "169",
+            0
+          ]
+        },
+        "class_type": "ConditioningZeroOut",
+        "_meta": {
+          "title": "ConditioningZeroOut"
+        }
+      },
+      "166": {
+        "inputs": {
+          "samples": [
+            "170",
+            0
+          ],
+          "vae": [
+            "208",
+            2
+          ]
+        },
+        "class_type": "VAEDecode",
+        "_meta": {
+          "title": "VAE Decode"
+        }
+      },
+      "167": {
+        "inputs": {
+          "image1_text": "original",
+          "image2_text": "Final Effect",
+          "image3_text": "",
+          "image4_text": "",
+          "reel_height": 1024,
+          "border": 32,
+          "image1": [
+            "169",
+            2
+          ],
+          "image2": [
+            "166",
+            0
+          ]
+        },
+        "class_type": "LayerUtility: ImageReel",
+        "_meta": {
+          "title": "LayerUtility: Image Reel"
+        }
+      },
+      "169": {
+        "inputs": {
+          "prompt": "改变图中人物的衣服颜色，从兰色变成灰色 在在办公室  保持人物一致性\n",
+          "target_size": 1536,
+          "target_vl_size": 384,
+          "upscale_method": "lanczos",
+          "crop_method": "center",
+          "instruction": "Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.",
+          "clip": [
+            "208",
+            1
+          ],
+          "vae": [
+            "208",
+            2
+          ],
+          "vl_resize_image1": [
+            "171",
+            0
+          ]
+        },
+        "class_type": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "_meta": {
+          "title": "TextEncodeQwenImageEditPlusAdvance lrzjason"
+        }
+      },
+      "170": {
+        "inputs": {
+          "seed": 485340322385686,
+          "steps": 4,
+          "cfg": 1,
+          "sampler_name": "sa_solver",
+          "scheduler": "beta",
+          "denoise": 1,
+          "model": [
+            "21",
+            0
+          ],
+          "positive": [
+            "169",
+            0
+          ],
+          "negative": [
+            "161",
+            0
+          ],
+          "latent_image": [
+            "169",
+            1
+          ]
+        },
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "KSampler"
+        }
+      },
+      "171": {
+        "inputs": {
+          "image": "None"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "Load Image"
+        }
+      },
+      "208": {
+        "inputs": {
+          "ckpt_name": "Qwen-Rapid-AIO-v3.safetensors"
+        },
+        "class_type": "CheckpointLoaderSimple",
+        "_meta": {
+          "title": "Load Checkpoint"
+        }
+      },
+      "213": {
+        "inputs": {
+          "filename_prefix": "Work-Fisher",
+          "images": [
+            "166",
+            0
+          ]
+        },
+        "class_type": "SaveImage",
+        "_meta": {
+          "title": "Save Image"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "21_lora_name",
+        "nodeId": "21",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "lora_name",
+        "label": "lora_name [21] (LoraLoaderModelOnly)",
+        "type": "select",
+        "defaultValue": "consistence_edit_v2.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "21_strength_model",
+        "nodeId": "21",
+        "classType": "LoraLoaderModelOnly",
+        "fieldName": "strength_model",
+        "label": "strength_model [21] (LoraLoaderModelOnly)",
+        "type": "number",
+        "defaultValue": 0.15000000000000002,
+        "exposed": false
+      },
+      {
+        "id": "167_image1_text",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "image1_text",
+        "label": "image1_text [167] (LayerUtility: ImageReel)",
+        "type": "text",
+        "defaultValue": "original",
+        "exposed": false
+      },
+      {
+        "id": "167_image2_text",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "image2_text",
+        "label": "image2_text [167] (LayerUtility: ImageReel)",
+        "type": "text",
+        "defaultValue": "Final Effect",
+        "exposed": false
+      },
+      {
+        "id": "167_image3_text",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "image3_text",
+        "label": "image3_text [167] (LayerUtility: ImageReel)",
+        "type": "text",
+        "defaultValue": "",
+        "exposed": false
+      },
+      {
+        "id": "167_image4_text",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "image4_text",
+        "label": "image4_text [167] (LayerUtility: ImageReel)",
+        "type": "text",
+        "defaultValue": "",
+        "exposed": false
+      },
+      {
+        "id": "167_reel_height",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "reel_height",
+        "label": "reel_height [167] (LayerUtility: ImageReel)",
+        "type": "number",
+        "defaultValue": 1024,
+        "exposed": false
+      },
+      {
+        "id": "167_border",
+        "nodeId": "167",
+        "classType": "LayerUtility: ImageReel",
+        "fieldName": "border",
+        "label": "border [167] (LayerUtility: ImageReel)",
+        "type": "number",
+        "defaultValue": 32,
+        "exposed": false
+      },
+      {
+        "id": "169_prompt",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "prompt",
+        "label": "提示词 [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "text",
+        "defaultValue": "改变图中人物的衣服颜色，从兰色变成灰色 在在办公室  保持人物一致性\n",
+        "exposed": true
+      },
+      {
+        "id": "169_target_size",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "target_size",
+        "label": "target_size [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "number",
+        "defaultValue": 1536,
+        "exposed": false
+      },
+      {
+        "id": "169_target_vl_size",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "target_vl_size",
+        "label": "target_vl_size [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "number",
+        "defaultValue": 384,
+        "exposed": false
+      },
+      {
+        "id": "169_upscale_method",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "upscale_method",
+        "label": "upscale_method [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "text",
+        "defaultValue": "lanczos",
+        "exposed": false
+      },
+      {
+        "id": "169_crop_method",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "crop_method",
+        "label": "crop_method [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "text",
+        "defaultValue": "center",
+        "exposed": false
+      },
+      {
+        "id": "169_instruction",
+        "nodeId": "169",
+        "classType": "TextEncodeQwenImageEditPlusAdvance_lrzjason",
+        "fieldName": "instruction",
+        "label": "指令 [169] (TextEncodeQwenImageEditPlusAdvance_lrzjason)",
+        "type": "text",
+        "defaultValue": "Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.",
+        "exposed": true
+      },
+      {
+        "id": "170_seed",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "seed",
+        "label": "随机种子 [170] (KSampler)",
+        "type": "number",
+        "defaultValue": 485340322385686,
+        "exposed": false
+      },
+      {
+        "id": "170_steps",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "steps",
+        "label": "步数 [170] (KSampler)",
+        "type": "number",
+        "defaultValue": 4,
+        "exposed": false
+      },
+      {
+        "id": "170_cfg",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "cfg",
+        "label": "CFG [170] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "170_sampler_name",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "sampler_name",
+        "label": "sampler_name [170] (KSampler)",
+        "type": "select",
+        "defaultValue": "sa_solver",
+        "exposed": false
+      },
+      {
+        "id": "170_scheduler",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "scheduler",
+        "label": "scheduler [170] (KSampler)",
+        "type": "select",
+        "defaultValue": "beta",
+        "exposed": false
+      },
+      {
+        "id": "170_denoise",
+        "nodeId": "170",
+        "classType": "KSampler",
+        "fieldName": "denoise",
+        "label": "重绘强度 [170] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "171_image",
+        "nodeId": "171",
+        "classType": "LoadImage",
+        "fieldName": "image",
+        "label": "图片 [171] (LoadImage)",
+        "type": "image",
+        "defaultValue": "None",
+        "exposed": true
+      },
+      {
+        "id": "208_ckpt_name",
+        "nodeId": "208",
+        "classType": "CheckpointLoaderSimple",
+        "fieldName": "ckpt_name",
+        "label": "ckpt_name [208] (CheckpointLoaderSimple)",
+        "type": "select",
+        "defaultValue": "Qwen-Rapid-AIO-v3.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "213_filename_prefix",
+        "nodeId": "213",
+        "classType": "SaveImage",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [213] (SaveImage)",
+        "type": "text",
+        "defaultValue": "Work-Fisher",
+        "exposed": false
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "image"
+    },
+    "description": "公众号",
+    "createdAt": "2026-05-24T06:09:45.860Z",
+    "updatedAt": "2026-05-24T06:09:45.860Z"
+  }
+]

@@ -1,0 +1,107 @@
+{
+  "comfyui_instances": [
+    "127.0.0.1:8188"
+  ],
+  "providers": {
+    "volcengine": {
+      "enabled": true,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiKey": "ef0b9259-a6b3-4695-8b6f-41095d3de060",
+      "models": []
+    },
+    "runninghub": {
+      "enabled": true,
+      "baseUrl": "https://www.runninghub.cn",
+      "apiKey": "f11c67cf15714750b4d541012f54af5c",
+      "models": []
+    },
+    "deepseek": {
+      "enabled": true,
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "sk-9f4dbbc0b4334f8d902fb519637e25b9",
+      "models": []
+    },
+    "ali": {
+      "enabled": true,
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "sk-893954928c224974bcf86afc1ed25cfe",
+      "models": []
+    },
+    "minimax": {
+      "enabled": true,
+      "baseUrl": "https://api.minimaxi.com/v1",
+      "apiKey": "sk-api-kH-xwwJbho0d5eRAo03k4nZ1e4Jw02L11J2RfBTLiYOSJIkUo6BgjRPPlfHVEAFIoCDWdtMNqemiMwApk-4IEcCY-xsSzg5aXILIVC7n2VkBhcA3l6WboVU",
+      "models": []
+    }
+  },
+  "model_cache": {
+    "chat": [
+      "MiniMax-M2.7",
+      "MiniMax-M2.5",
+      "gpt-4o",
+      "deepseek-chat",
+      "qwen-plus",
+      "MiniMax-M2.7-highspeed",
+      "MiniMax-M2.5-highspeed",
+      "MiniMax-M2.1",
+      "MiniMax-M2.1-highspeed",
+      "MiniMax-M2",
+      "gpt-4.1",
+      "gpt-5.1",
+      "gpt-5.2",
+      "gpt-5.4",
+      "claude-sonnet-4-6",
+      "claude-opus-4-6",
+      "claude-sonnet-4-5-20250929",
+      "claude-opus-4-5-20251101",
+      "claude-haiku-4-5-20251001",
+      "doubao-seed-2-0-pro-260215",
+      "doubao-seed-2-0-lite-260215",
+      "doubao-seed-2-0-mini-260215",
+      "doubao-seed-2-0-code-preview-260215",
+      "doubao-seed-character-251128",
+      "doubao-seed-1-8-251228",
+      "doubao-seed-code-preview-251028",
+      "doubao-seed-1-6-lite-251015",
+      "doubao-seed-1-6-flash-250828",
+      "doubao-seed-1-6-vision-250815",
+      "doubao-seed-1-6-251015",
+      "doubao-seed-1-6-250615",
+      "doubao-seed-1-6-flash-250615",
+      "doubao-seed-translation-250915",
+      "doubao-1-5-pro-32k-250115",
+      "doubao-1-5-pro-32k-character-250715",
+      "doubao-1-5-pro-32k-character-250228",
+      "doubao-1-5-lite-32k-250115",
+      "doubao-1-5-vision-pro-32k-250115",
+      "glm-4-7-251222",
+      "deepseek-v3-2-251201",
+      "deepseek-v3-1-terminus",
+      "deepseek-v3-250324",
+      "deepseek-r1-250528",
+      "qwen3-32b-20250429",
+      "qwen3-14b-20250429",
+      "qwen3-8b-20250429",
+      "qwen3-0-6b-20250429",
+      "qwen2-5-72b-20240919",
+      "glm-4-5-air"
+    ],
+    "image": [
+      "Doubao-Seedream-5.0-Lite",
+      "Flux-1-Dev",
+      "SDXL-Turbo"
+    ],
+    "video": [
+      "Wan2.6-I2V-1080P",
+      "doubao-seedance-1-5-pro-251215",
+      "ViduQ3-pro",
+      "Kling-v2"
+    ],
+    "tts": [
+      "RunningHub-TTS-VoiceClone",
+      "MiniMax-TTS",
+      "Fish-Speech-1.4"
+    ]
+  },
+  "comfyui_input_dir": "E:\\comfyui8.0\\ComfyUI_Mie_2026_V8.0_Base\\ComfyUI\\input"
+}

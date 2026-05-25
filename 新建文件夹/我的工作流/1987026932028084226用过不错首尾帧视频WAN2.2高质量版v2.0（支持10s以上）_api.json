@@ -1,0 +1,616 @@
+{
+  "1": {
+    "inputs": {
+      "width": [
+        "57",
+        3
+      ],
+      "height": [
+        "57",
+        4
+      ],
+      "interpolation": "lanczos",
+      "method": "fill / crop",
+      "condition": "always",
+      "multiple_of": 16,
+      "image": [
+        "57",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "图像缩放"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model_name": "umt5-xxl-enc-bf16.safetensors",
+      "precision": "bf16",
+      "load_device": "offload_device",
+      "quantization": "disabled"
+    },
+    "class_type": "LoadWanVideoT5TextEncoder",
+    "_meta": {
+      "title": "WanVideo T5 Text Encoder Loader"
+    }
+  },
+  "7": {
+    "inputs": {
+      "enable_vae_tiling": false,
+      "tile_x": 272,
+      "tile_y": 272,
+      "tile_stride_x": 144,
+      "tile_stride_y": 128,
+      "normalization": "default",
+      "vae": [
+        "37",
+        0
+      ],
+      "samples": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "WanVideoDecode",
+    "_meta": {
+      "title": "WanVideo Decode"
+    }
+  },
+  "8": {
+    "inputs": {
+      "strength_1": 1,
+      "strength_2": 1,
+      "crop": "center",
+      "combine_embeds": "average",
+      "force_offload": true,
+      "tiles": 0,
+      "ratio": 0.5,
+      "clip_vision": [
+        "23",
+        0
+      ],
+      "image_1": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "WanVideoClipVisionEncode",
+    "_meta": {
+      "title": "WanVideo ClipVision Encode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "lora": "Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength": 3,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelect",
+    "_meta": {
+      "title": "WanVideo Lora Select"
+    }
+  },
+  "10": {
+    "inputs": {
+      "lora": "Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength": 1,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelect",
+    "_meta": {
+      "title": "WanVideo Lora Select"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model": "Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+      "base_precision": "bf16",
+      "quantization": "fp8_e4m3fn_scaled",
+      "load_device": "offload_device",
+      "attention_mode": "sageattn",
+      "rms_norm_function": "default"
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "WanVideo Model Loader"
+    }
+  },
+  "12": {
+    "inputs": {
+      "model": [
+        "11",
+        0
+      ],
+      "block_swap_args": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetBlockSwap",
+    "_meta": {
+      "title": "WanVideo Set BlockSwap"
+    }
+  },
+  "13": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "27",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM",
+    "_meta": {
+      "title": "LayerUtility: Purge VRAM"
+    }
+  },
+  "16": {
+    "inputs": {
+      "model": "Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+      "base_precision": "bf16",
+      "quantization": "fp8_e4m3fn_scaled",
+      "load_device": "offload_device",
+      "attention_mode": "sageattn",
+      "rms_norm_function": "default"
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "WanVideo Model Loader"
+    }
+  },
+  "17": {
+    "inputs": {
+      "model": [
+        "16",
+        0
+      ],
+      "block_swap_args": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetBlockSwap",
+    "_meta": {
+      "title": "WanVideo Set BlockSwap"
+    }
+  },
+  "18": {
+    "inputs": {
+      "blocks_to_swap": 30,
+      "offload_img_emb": false,
+      "offload_txt_emb": false,
+      "use_non_blocking": false,
+      "vace_blocks_to_swap": 1,
+      "prefetch_blocks": 0,
+      "block_swap_debug": false
+    },
+    "class_type": "WanVideoBlockSwap",
+    "_meta": {
+      "title": "WanVideo Block Swap"
+    }
+  },
+  "19": {
+    "inputs": {
+      "model": [
+        "12",
+        0
+      ],
+      "lora": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetLoRAs",
+    "_meta": {
+      "title": "WanVideo Set LoRAs"
+    }
+  },
+  "20": {
+    "inputs": {
+      "model": [
+        "17",
+        0
+      ],
+      "lora": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetLoRAs",
+    "_meta": {
+      "title": "WanVideo Set LoRAs"
+    }
+  },
+  "23": {
+    "inputs": {
+      "model_name": "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
+      "precision": "fp16",
+      "load_device": "offload_device"
+    },
+    "class_type": "LoadWanVideoClipTextEncoder",
+    "_meta": {
+      "title": "WanVideo CLIP Text Encoder Loader"
+    }
+  },
+  "24": {
+    "inputs": {
+      "steps": [
+        "38",
+        0
+      ],
+      "cfg": 1,
+      "shift": 8,
+      "seed": 820402164285930,
+      "force_offload": true,
+      "scheduler": "unipc",
+      "riflex_freq_index": 0,
+      "denoise_strength": 1,
+      "batched_cfg": false,
+      "rope_function": "comfy",
+      "start_step": [
+        "36",
+        0
+      ],
+      "end_step": -1,
+      "add_noise_to_samples": false,
+      "model": [
+        "20",
+        0
+      ],
+      "image_embeds": [
+        "52",
+        0
+      ],
+      "text_embeds": [
+        "33",
+        0
+      ],
+      "samples": [
+        "27",
+        0
+      ]
+    },
+    "class_type": "WanVideoSampler",
+    "_meta": {
+      "title": "WanVideo Sampler"
+    }
+  },
+  "25": {
+    "inputs": {
+      "steps": [
+        "38",
+        0
+      ],
+      "cfg_scale_start": 2,
+      "cfg_scale_end": 2,
+      "interpolation": "linear",
+      "start_percent": 0,
+      "end_percent": 0.01
+    },
+    "class_type": "CreateCFGScheduleFloatList",
+    "_meta": {
+      "title": "Create CFG Schedule Float List"
+    }
+  },
+  "27": {
+    "inputs": {
+      "steps": [
+        "38",
+        0
+      ],
+      "cfg": [
+        "25",
+        0
+      ],
+      "shift": 8,
+      "seed": 820402164285930,
+      "force_offload": true,
+      "scheduler": "unipc",
+      "riflex_freq_index": 0,
+      "denoise_strength": 1,
+      "batched_cfg": false,
+      "rope_function": "comfy",
+      "start_step": 0,
+      "end_step": [
+        "36",
+        0
+      ],
+      "add_noise_to_samples": false,
+      "model": [
+        "19",
+        0
+      ],
+      "image_embeds": [
+        "52",
+        0
+      ],
+      "text_embeds": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "WanVideoSampler",
+    "_meta": {
+      "title": "WanVideo Sampler"
+    }
+  },
+  "28": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM",
+    "_meta": {
+      "title": "LayerUtility: Purge VRAM"
+    }
+  },
+  "33": {
+    "inputs": {
+      "positive_prompt": [
+        "34",
+        0
+      ],
+      "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "force_offload": true,
+      "use_disk_cache": false,
+      "device": "gpu",
+      "t5": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "WanVideoTextEncode",
+    "_meta": {
+      "title": "WanVideo TextEncode"
+    }
+  },
+  "34": {
+    "inputs": {
+      "prompt": "[SCENE]: Mahogany study, blue blinds shadows, chaotic atmosphere.\n[SUBJECT]: Young woman (Image 1) and Middle-aged man (Image 2).\n[ACTION]: \nBeat 1 (QiShi 0-0.5s): A sudden, violent burst as the woman slams her hands on the table and lunges upward, chair clattering backward.\nBeat 2 (GuoCheng 0.5-1.2s): Her right arm whips across the frame in a blindingly fast arc, her body rotating with the force of the swing.\nBeat 3 (LuoDian 1.2-1.8s): CRITICAL IMPACT. Her hand connects with the man's cheek. The man's head jerks sideways instantly, a spray of micro-droplets (saliva/sweat) flying from the impact.\nBeat 4 (FanYing 1.8-3.5s): The woman gasps, her hand still extended, trembling with rage. The man slowly brings his hand to his burning face, eyes trembling in disbelief.\nBeat 5 (ZhongDian 3.5-5.0s): They lock eyes in a heavy, suffocating silence, the physical violence replaced by psychological war.\n[CAMERA]: A violent camera shake at the moment of impact (Beat 3), followed by a slow, shaky handheld zoom toward the woman's face.\n[ATMOSPHERE]: High energy, flickering shadows, cinematic 6500K.\n[STYLE]: Action-oriented, 4k, realistic physics."
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "提示词文本"
+    }
+  },
+  "36": {
+    "inputs": {
+      "value": 4
+    },
+    "class_type": "JWInteger",
+    "_meta": {
+      "title": "Integer"
+    }
+  },
+  "37": {
+    "inputs": {
+      "model_name": "Wan2_1_VAE_bf16.safetensors",
+      "precision": "bf16",
+      "use_cpu_cache": false,
+      "verbose": false
+    },
+    "class_type": "WanVideoVAELoader",
+    "_meta": {
+      "title": "WanVideo VAE Loader"
+    }
+  },
+  "38": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "整数常量"
+    }
+  },
+  "43": {
+    "inputs": {
+      "width": [
+        "1",
+        1
+      ],
+      "height": [
+        "1",
+        2
+      ],
+      "interpolation": "lanczos",
+      "method": "fill / crop",
+      "condition": "always",
+      "multiple_of": 16,
+      "image": [
+        "59",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "图像缩放"
+    }
+  },
+  "48": {
+    "inputs": {
+      "image": "cf43d1b0cd982ceccaa04ac9d5749a5c55c1c421524cd09fca55fb3ed6d6b7ff.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "49": {
+    "inputs": {
+      "image": "60c79ee45b3b04d98081a466ea5d71ca7256f86a63cfbaa3e3fb2e288a97d146.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "50": {
+    "inputs": {
+      "anything": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "清理GPU占用"
+    }
+  },
+  "51": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "xiaren",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "no_preview": false,
+      "images": [
+        "50",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "合并为视频"
+    }
+  },
+  "52": {
+    "inputs": {
+      "width": [
+        "1",
+        1
+      ],
+      "height": [
+        "1",
+        2
+      ],
+      "num_frames": [
+        "54",
+        0
+      ],
+      "noise_aug_strength": 0,
+      "start_latent_strength": 1,
+      "end_latent_strength": 1,
+      "force_offload": true,
+      "fun_or_fl2v_model": false,
+      "tiled_vae": false,
+      "augment_empty_frames": 0,
+      "vae": [
+        "37",
+        0
+      ],
+      "clip_embeds": [
+        "8",
+        0
+      ],
+      "start_image": [
+        "43",
+        0
+      ],
+      "end_image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "WanVideoImageToVideoEncode",
+    "_meta": {
+      "title": "WanVideo ImageToVideo Encode"
+    }
+  },
+  "54": {
+    "inputs": {
+      "value": "a*16+1",
+      "a": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "简易运算"
+    }
+  },
+  "56": {
+    "inputs": {
+      "value": 6
+    },
+    "class_type": "JWInteger",
+    "_meta": {
+      "title": "时长"
+    }
+  },
+  "57": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "longest",
+      "scale_to_length": [
+        "58",
+        0
+      ],
+      "background_color": "#000000",
+      "image": [
+        "49",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "按宽高比缩放_V2"
+    }
+  },
+  "58": {
+    "inputs": {
+      "value": 832
+    },
+    "class_type": "JWInteger",
+    "_meta": {
+      "title": "高"
+    }
+  },
+  "59": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": [
+        "57",
+        3
+      ],
+      "proportional_height": [
+        "57",
+        4
+      ],
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "longest",
+      "scale_to_length": 1024,
+      "background_color": "#000000",
+      "image": [
+        "48",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "按宽高比缩放_V2"
+    }
+  }
+}

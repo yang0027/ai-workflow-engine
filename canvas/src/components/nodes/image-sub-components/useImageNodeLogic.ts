@@ -1,0 +1,832 @@
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { RunningHubService } from '../../../services/runninghub.service';
+
+export const DEFAULT_PROVIDER_IMAGE_MODELS: Record<string, string[]> = {
+  minimax: ['image-01'],
+  ali: ['wanx2.1-t2i-turbo', 'wanx2.1-t2i-plus'],
+  volcengine: ['Doubao-Seedream-5.0-Lite', 'doubao-seedream-5-0-260128', 'doubao-seedream-4-5-251128'],
+  openai: ['dall-e-3', 'dall-e-2']
+};
+
+interface UseImageNodeLogicProps {
+  id: string;
+  data: any;
+  setNodes: any;
+  setEdges: any;
+  edges: any[];
+  nodes: any[];
+}
+
+export function useImageNodeLogic({
+  id,
+  data,
+  setNodes,
+  setEdges,
+  edges,
+  nodes
+}: UseImageNodeLogicProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 性能特优：使用 Ref 缓存 nodes 和 edges 引用，防在拖拽阶段高频触发 useMemo 计算
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+
+  // 性能特优：仅仅当节点图片或文本实质变化时才触发 Key 更新，彻底避开位置拖动时的 position 每一帧刷新
+  const nodesDataKey = useMemo(() => {
+    return nodes.map(n => {
+      const outputVal = n.data?.outputs?.image || n.data?.outputs?.output || '';
+      const inputVal = n.data?.inputs?.fileUrl || '';
+      const labelVal = n.data?.label || n.data?.title || '';
+      return `${n.id}_${outputVal}_${inputVal}_${labelVal}`;
+    }).join('|');
+  }, [nodes]);
+
+  // 1. 解析上游指向当前节点的所有图像并进行严格去重，支持最多 6 个，同时排除视频/音频以防止黑屏
+  const connectedImages = useMemo(() => {
+    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref，彻底绝杀 React Commit Phase 的 useEffect 异步旧值漏洞
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+
+    const currentEdges = edgesRef.current;
+    const currentNodes = nodesRef.current;
+
+    const connectedEdges = currentEdges.filter(e => e.target === id);
+    const imgs: { url: string; nodeName: string; nodeId: string }[] = [];
+
+    connectedEdges.forEach(edge => {
+      const srcNode = currentNodes.find(n => n.id === edge.source);
+      if (!srcNode) return;
+      const outputs = (srcNode.data?.outputs || {}) as any;
+      const inputs = (srcNode.data?.inputs || {}) as any;
+      
+      const val = outputs.output || outputs.text || outputs.storyboard || outputs.image || inputs.fileUrl || inputs.text || '';
+      if (!val || typeof val !== 'string') return;
+
+      const isVideoOrAudio = 
+        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.ogg') || val.endsWith('.m4a') ||
+        val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') ||
+        val.startsWith('data:audio/') || val.startsWith('data:video/') ||
+        val.includes('media-asset-') && (val.includes('audio') || val.includes('video')) ||
+        srcNode.type === 'tts-service';
+
+      if (isVideoOrAudio) {
+        return; // 静默排除，绝不流入图像节点防止黑屏
+      }
+
+      const isImage = 
+        val.startsWith('data:image/') || val.startsWith('db://') ||
+        val.endsWith('.png') || val.endsWith('.jpg') || val.endsWith('.jpeg') || val.endsWith('.webp') ||
+        srcNode.type === 'upload-node' || srcNode.type === 'image-service';
+
+      if (isImage) {
+        imgs.push({
+          url: val,
+          nodeName: srcNode.data?.label || srcNode.data?.title || '未命名图像',
+          nodeId: srcNode.id
+        });
+      }
+    });
+
+    // 严格按 nodeId 进行物理去重，防止 `@` 列表展示重复图片
+    const uniqueImgs: typeof imgs = [];
+    const seenIds = new Set<string>();
+    imgs.forEach(img => {
+      if (!seenIds.has(img.nodeId)) {
+        seenIds.add(img.nodeId);
+        uniqueImgs.push(img);
+      }
+    });
+
+    return uniqueImgs.slice(0, 6);
+  }, [edges, nodesDataKey, id]);
+
+  // 2. 智能提取文本 Prompt 连线数据
+  const connectedPrompt = useMemo(() => {
+    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+
+    const currentEdges = edgesRef.current;
+    const currentNodes = nodesRef.current;
+
+    const connectedEdges = currentEdges.filter(e => e.target === id);
+    const prompts: string[] = [];
+
+    connectedEdges.forEach(edge => {
+      const srcNode = currentNodes.find(n => n.id === edge.source);
+      if (!srcNode) return;
+      const outputs = (srcNode.data?.outputs || {}) as any;
+      const inputs = (srcNode.data?.inputs || {}) as any;
+      
+      const val = outputs.output || outputs.text || outputs.prompt || inputs.text || '';
+      if (!val || typeof val !== 'string') return;
+
+      const isResourceUrl = 
+        val.startsWith('data:') || val.startsWith('db://') || val.startsWith('http') ||
+        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.mp4') || val.endsWith('.png') || val.endsWith('.jpg');
+
+      if (!isResourceUrl && srcNode.type === 'prompt-source') {
+        prompts.push(val);
+      }
+    });
+
+    return prompts.join('\n');
+  }, [edges, nodesDataKey, id]);
+
+  const isPromptConnected = connectedPrompt.length > 0;
+  const isFaceRefConnected = connectedImages.length > 0;
+
+  // 3. 基础参数
+  const providerId = data.inputs?.providerId || 'minimax';
+  const size = data.inputs?.size || '1024x1024';
+  const cfg = data.inputs?.cfg !== undefined ? data.inputs.cfg : 7.0;
+  const steps = data.inputs?.steps !== undefined ? data.inputs.steps : 20;
+
+  // 多参考图画廊融合
+  const refImages = useMemo(() => {
+    const connUrls = connectedImages.map(img => img.url);
+    const localRefs = data.inputs?.refImages || (data.inputs?.faceRef ? [data.inputs.faceRef] : []);
+    const merged = [...new Set([...connUrls, ...localRefs])];
+    return merged.slice(0, 6);
+  }, [connectedImages, data.inputs?.refImages, data.inputs?.faceRef]);
+
+  const currentFaceRef = refImages[0] || '';
+  
+  // 4. 输入状态
+  const [promptInput, setPromptInput] = useState(data.inputs?.prompt && data.inputs.prompt !== 'null' ? data.inputs.prompt : '');
+  const [showMentionList, setShowMentionList] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [cursorPos, setCursorPos] = useState(0);
+
+  useEffect(() => {
+    if (data.inputs?.prompt !== undefined) {
+      const val = data.inputs.prompt === null || data.inputs.prompt === 'null' ? '' : data.inputs.prompt;
+      if (val !== promptInput) {
+        setPromptInput(val);
+      }
+    }
+  }, [data.inputs?.prompt]);
+
+  const currentPrompt = isPromptConnected ? connectedPrompt : promptInput;
+
+  // 5. 核心状态
+  const [activeTab, setActiveTab] = useState<'standard' | 'aix'>(data.inputs?.activeTab || 'standard');
+  const [runningHubTemplateId, setRunningHubTemplateId] = useState<string>(data.inputs?.runningHubTemplateId || 'rh_wf_face_consistency');
+
+  useEffect(() => {
+    if (data.inputs?.runningHubTemplateId && data.inputs.runningHubTemplateId !== runningHubTemplateId) {
+      setRunningHubTemplateId(data.inputs.runningHubTemplateId);
+    }
+  }, [data.inputs?.runningHubTemplateId]);
+  const [imageModels, setImageModels] = useState<string[]>(['flux-schnell', 'stable-diffusion-3.5', 'sdxl-turbo']);
+  const [generating, setGenerating] = useState(false);
+  const [generatedImg, setGeneratedImg] = useState(data.outputs?.image || '');
+  const [settings, setSettings] = useState<any>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [localName, setLocalName] = useState(data.label || '图像');
+
+  // Popover 状态
+  const [activePopover, setActivePopover] = useState<'model' | 'specs' | 'gallery' | 'runninghub' | 'batchSize' | null>(null);
+
+  useEffect(() => {
+    if (data.label) {
+      setLocalName(data.label);
+    }
+  }, [data.label]);
+
+  const [workflows, setWorkflows] = useState<any[]>(() => 
+    RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image')
+  );
+  useEffect(() => {
+    const handleUpdate = () => {
+      setWorkflows(RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image'));
+    };
+    window.addEventListener('runninghub_workflows_updated', handleUpdate);
+    return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
+  }, []);
+  const currentTemplate = useMemo(() => {
+    if (data.inputs?.customTemplate) {
+      return data.inputs.customTemplate;
+    }
+    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
+  }, [workflows, runningHubTemplateId, data.inputs?.customTemplate]);
+  const unifiedParams = useMemo(() => {
+    if (!currentTemplate) return [];
+    if (currentTemplate.paramsSchema) {
+      // 本地ComfyUI/RunningHub自定义模板参数定义
+      return currentTemplate.paramsSchema.map((p: any) => ({
+        nodeId: p.nodeId,
+        fieldName: p.fieldName,
+        fieldType: p.type === 'number' ? 'number' : 'string',
+        fieldValue: p.defaultValue,
+        description: p.label || p.fieldName,
+        exposed: p.exposed,
+        portId: p.id,
+        type: p.type
+      }));
+    } else if (currentTemplate.nodeInfoList) {
+      // 官方云端预设模板参数定义
+      return currentTemplate.nodeInfoList.map((info: any) => ({
+        nodeId: info.nodeId,
+        fieldName: info.fieldName,
+        fieldType: info.fieldType,
+        fieldValue: info.fieldValue,
+        description: info.description,
+        exposed: true,
+        portId: `${info.nodeId}_${info.fieldName}`,
+        type: 'text'
+      }));
+    }
+    return [];
+  }, [currentTemplate]);
+
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('http://localhost:3000/api/v1/settings');
+        if (res.ok) {
+          const settingsData = await res.json();
+          setSettings(settingsData);
+          if (settingsData.model_cache?.image) {
+            setImageModels(settingsData.model_cache.image);
+          }
+        }
+      } catch (e) {
+        console.error('加载 ImageServiceNode 外部依赖失败:', e);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const currentProviderModels = useMemo(() => {
+    const defaultModels = DEFAULT_PROVIDER_IMAGE_MODELS[providerId] || [];
+    if (!settings || !settings.providers || !settings.providers[providerId]) {
+      return defaultModels;
+    }
+    const provider = settings.providers[providerId];
+    if (!provider.models || !Array.isArray(provider.models)) {
+      return defaultModels;
+    }
+    const imageKeywords = ['image', 'wanx', 'seedream', 'dall-e', 'flux', 'sdxl', 'stable-diffusion', 'illustrate', 'paint'];
+    const filtered = provider.models.filter((m: string) => {
+      const lowerM = m.toLowerCase();
+      return imageKeywords.some(kw => lowerM.includes(kw));
+    });
+    return filtered.length > 0 ? filtered : defaultModels;
+  }, [settings, providerId]);
+
+  const model = data.inputs?.model || currentProviderModels[0] || 'image-01';
+
+  useEffect(() => {
+    if (currentProviderModels.length > 0) {
+      if (!currentProviderModels.includes(model)) {
+        handleInputChange('model', currentProviderModels[0]);
+      }
+    }
+  }, [providerId, currentProviderModels, model]);
+
+  const updateNodeData = (updates: any) => {
+    setNodes((nodes: any[]) =>
+      nodes.map((n) => {
+        if (n.id === id) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                ...updates
+              }
+            }
+          };
+        }
+        return n;
+      })
+    );
+  };
+
+  const handleInputChange = (field: string, val: any) => {
+    updateNodeData({ [field]: val });
+  };
+
+  const handleSaveName = () => {
+    setIsEditingName(false);
+    if (localName.trim()) {
+      setNodes((nds: any[]) =>
+        nds.map((n) => {
+          if (n.id === id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                label: localName.trim(),
+              },
+            };
+          }
+          return n;
+        })
+      );
+    }
+  };
+
+  const handleTabChange = (tab: 'standard' | 'aix') => {
+    setActiveTab(tab);
+    handleInputChange('activeTab', tab);
+  };
+
+  const handleDelete = () => {
+    setNodes((nds: any[]) => nds.filter((n) => n.id !== id));
+    setEdges((eds: any[]) => eds.filter((e) => e.source !== id && e.target !== id));
+  };
+
+  // 9. 添加物理 upload-node 左侧错落生成逻辑 (杜绝闭包旧值，动态绝对定位到 X: -420 安全避让)
+  const handleAddRefImagePhysicalNode = (base64Data?: string, fileName?: string) => {
+    if ((window as any).spawnLinkedNode) {
+      const currentNode = nodes.find(n => n.id === id);
+      const posX = currentNode ? currentNode.position.x : 0;
+      const posY = currentNode ? currentNode.position.y : 0;
+
+      const connCount = nodes.filter(n => 
+        edges.some(e => e.target === id && e.source === n.id)
+      ).length;
+      
+      const staggeredOffsetY = -120 + connCount * 80; 
+
+      (window as any).spawnLinkedNode(id, 'upload-node', 'left', {
+        fileType: 'image',
+        fileUrl: base64Data || '',
+        fileName: fileName || `参考图-${connCount + 1}`,
+        position: { x: posX - 420, y: posY + staggeredOffsetY } // 严格定位在左侧 420 像素远端，保持清爽连线
+      });
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        if (typeof reader.result === 'string') {
+          const base64 = reader.result;
+          
+          // 极致安全虚拟化中转：将超大 Base64 静默存入 IndexedDB 本地静态库，只向 React Nodes 传递超轻量级的 db:// 协议 ID！
+          // 这能将 React Flow 节点比对负累与 LocalStorage 爆容量溢出黑屏几率直接降为 0！
+          const saveMedia = (window as any).saveMediaToDB;
+          let finalUrl = base64;
+          if (typeof saveMedia === 'function') {
+            const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await saveMedia(mediaId, base64);
+            finalUrl = `db://${mediaId}`;
+          }
+
+          handleAddRefImagePhysicalNode(finalUrl, file.name);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveRefImage = (index: number) => {
+    const nextRef = refImages.filter((_, i) => i !== index);
+    handleInputChange('refImages', nextRef);
+  };
+
+  const handleOpenAssetsModal = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-large-modal', {
+        detail: { tab: 'assets', nodeTarget: id, type: 'image' }
+      })
+    );
+  };
+
+  // 监听全局资产回调 (动态避让 X: -420)
+  useEffect(() => {
+    const handleAssetsSelect = (e: any) => {
+      const { nodeTarget, selectedUrl, type } = e.detail || {};
+      if (nodeTarget === id && type === 'image' && selectedUrl) {
+        handleAddRefImagePhysicalNode(selectedUrl, '素材库选入图片');
+      }
+    };
+    window.addEventListener('assets-selected' as any, handleAssetsSelect);
+    return () => {
+      window.removeEventListener('assets-selected' as any, handleAssetsSelect);
+    };
+  }, []);
+
+  // 10. @ Mention 输入处理
+  const handlePromptChange = (val: string) => {
+    setPromptInput(val);
+    handleInputChange('prompt', val);
+
+    const lastAtIdx = val.lastIndexOf('@');
+    if (lastAtIdx !== -1 && lastAtIdx >= val.length - 5) {
+      const query = val.substring(lastAtIdx + 1);
+      setMentionSearch(query);
+      setShowMentionList(true);
+      setCursorPos(lastAtIdx);
+    } else {
+      setShowMentionList(false);
+    }
+  };
+
+  const handleSelectMention = (imgIndex: number, imgName: string) => {
+    const textBefore = promptInput.substring(0, cursorPos);
+    const replacement = `@[图${imgIndex + 1}] `; // 用 @[图X] 替代以实现清爽缩略图与避免重名冲突
+    const textAfter = promptInput.substring(cursorPos + mentionSearch.length + 1);
+    const nextText = textBefore + replacement + textAfter;
+    setPromptInput(nextText);
+    handleInputChange('prompt', nextText);
+    setShowMentionList(false);
+  };
+
+  // 11. 升级后的 handleSpawnPromptSource (文生图派生坐标也定位在 X: -420 远端)
+  const handleSpawnPromptSource = () => {
+    if ((window as any).spawnLinkedNode) {
+      setNodes((nds: any[]) => {
+        const currentNode = nds.find(n => n.id === id);
+        const posX = currentNode ? currentNode.position.x : 0;
+        const posY = currentNode ? currentNode.position.y : 0;
+
+        setTimeout(() => {
+          (window as any).spawnLinkedNode(id, 'prompt-source', 'left', {
+            position: { x: posX - 420, y: posY } // 绝对定位到 -420 处，杜绝连线堆叠与遮挡
+          });
+        }, 20);
+        return nds;
+      });
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  // 12. 图像生成逻辑
+  const handleGenerateImage = async () => {
+    let processedPrompt = currentPrompt;
+    connectedImages.forEach((img, idx) => {
+      // 优先支持并替换新的 @[图X] 清爽标记格式
+      processedPrompt = processedPrompt.replace(new RegExp(`@\\[图${idx + 1}\\]`, 'g'), `[参考图${idx + 1}]`);
+      // 兼容可能存在的旧标签模式
+      processedPrompt = processedPrompt.replace(`[${img.nodeName}]`, `[参考图${idx + 1}]`);
+    });
+
+    const batchSize = data.inputs?.batchSize || 1;
+    setGenerating(true);
+
+    try {
+      for (let i = 0; i < batchSize; i++) {
+        // 当生成多张时，给用户清晰的日志体验
+        if (batchSize > 1) {
+          window.dispatchEvent(
+            new CustomEvent('add-success-log', {
+              detail: {
+                nodeId: id,
+                nodeName: data.label || 'AI 图像渲染',
+                model: activeTab === 'aix' ? (currentTemplate?.name || 'aix') : model,
+                errorMsg: `🎬 串行生图：正在自动为您排队生成第 ${i + 1}/${batchSize} 张... ⌛`,
+                type: 'image'
+              }
+            })
+          );
+        }
+
+        setGeneratedImg('');
+        
+        // 如果 inputs 中含有选中的 ComfyUI 工作流，则全自动升级为 ComfyUI (aix) 驱动模式
+        const isAixMode = activeTab === 'aix' || !!data.inputs?.runningHubWorkflowName;
+
+        if (isAixMode) {
+          if (!currentTemplate) {
+            alert('请选择有效的 ComfyUI 云端工作流模板！');
+            setGenerating(false);
+            return;
+          }
+
+          const aixInputs: Record<string, any> = {};
+          let textParamIndex = 0;
+          let imageParamIndex = 0;
+
+          unifiedParams.forEach((p: any) => {
+            const fieldLower = p.fieldName.toLowerCase();
+            const displayLower = (p.description || '').toLowerCase();
+            const inputKey = p.portId;
+            const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
+
+            const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
+            const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
+
+            // 1. 智能适配文本输入 (多段文本顺次对齐，首段绑定主提示词输入框)
+            if (isText) {
+              if (textParamIndex === 0) {
+                aixInputs[inputKey] = processedPrompt;
+              } else {
+                aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
+              }
+              textParamIndex++;
+            } 
+            // 2. 智能图片输入，支持连卡槽多图顺次映射
+            else if (isImage) {
+              const refImagesList = data.inputs?.refImages || [];
+              const targetImage = refImagesList[imageParamIndex] || currentFaceRef || '';
+              aixInputs[inputKey] = targetImage;
+              imageParamIndex++;
+            } 
+            // 3. 画面宽度
+            else if (fieldLower === 'width' || fieldLower === 'w') {
+              const wVal = parseInt(size.split('x')[0]) || 1024;
+              aixInputs[inputKey] = isNum ? wVal : String(wVal);
+            } 
+            // 4. 画面高度
+            else if (fieldLower === 'height' || fieldLower === 'h') {
+              const hVal = parseInt(size.split('x')[1]) || 1024;
+              aixInputs[inputKey] = isNum ? hVal : String(hVal);
+            } 
+            // 5. 画面尺寸限制为 1
+            else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
+              aixInputs[inputKey] = isNum ? 1 : '1';
+            } 
+            // 6. 其他微调或特殊参数，读取在 data.inputs 中自动持久化保存的值
+            else {
+              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
+            }
+          });
+
+          textParamIndex = 0;
+          imageParamIndex = 0;
+
+          const dynamicMappings = unifiedParams.map((p: any) => {
+            const fieldLower = p.fieldName.toLowerCase();
+            const displayLower = (p.description || '').toLowerCase();
+            const inputKey = p.portId;
+            const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
+
+            const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
+            const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
+
+            let mappedVal = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
+
+            if (isText) {
+              if (textParamIndex === 0) {
+                mappedVal = processedPrompt;
+              }
+              textParamIndex++;
+            } else if (isImage) {
+              const refImagesList = data.inputs?.refImages || [];
+              mappedVal = refImagesList[imageParamIndex] || currentFaceRef || '';
+              imageParamIndex++;
+            } else if (fieldLower === 'width' || fieldLower === 'w') {
+              mappedVal = parseInt(size.split('x')[0]) || 1024;
+            } else if (fieldLower === 'height' || fieldLower === 'h') {
+              mappedVal = parseInt(size.split('x')[1]) || 1024;
+            } else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
+              mappedVal = 1;
+            }
+
+            return {
+              portId: inputKey,
+              nodeId: p.nodeId,
+              fieldName: p.fieldName,
+              displayName: p.description || p.fieldName,
+              value: mappedVal
+            };
+          });
+
+          const wfSource = currentTemplate.source || 'runninghub';
+          const wfIdOrJson = wfSource === 'local_comfyui'
+            ? (currentTemplate.rawWorkflowJson ? JSON.stringify(currentTemplate.rawWorkflowJson) : '')
+            : (currentTemplate.workflowRef || currentTemplate.appId);
+
+          const outputUrl = await RunningHubService.executeCustomWorkflow(
+            wfSource,
+            wfIdOrJson,
+            aixInputs,
+            dynamicMappings
+          );
+
+          if (outputUrl) {
+            setGeneratedImg(outputUrl);
+            setNodes((nodes: any[]) =>
+              nodes.map((n) => {
+                if (n.id === id) {
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      outputs: {
+                        ...((n.data as any)?.outputs || {}),
+                        image: outputUrl,
+                        output: outputUrl,
+                        errorMsg: ''
+                      }
+                    }
+                  };
+                }
+                return n;
+              })
+            );
+
+            window.dispatchEvent(
+              new CustomEvent('add-success-log', {
+                detail: {
+                  nodeId: id,
+                  nodeName: data.label || 'AI 图像渲染',
+                  model: currentTemplate.name,
+                  errorMsg: batchSize > 1 
+                    ? `🎉 第 ${i + 1}/${batchSize} 张 ComfyUI 成果级联渲染完成！` 
+                    : '云端 RunningHub 任务执行成功 ✅',
+                  outputUrl: outputUrl,
+                  type: 'image'
+                }
+              })
+            );
+          } else {
+            throw new Error(`云端任务第 ${i + 1} 张已完成，但未返回有效的图像成果 URL。`);
+          }
+        } else {
+          // Standard 直连生图模式
+          if (!processedPrompt.trim()) {
+            alert('请输入或连线提供生图的画面描述 Prompt！');
+            setGenerating(false);
+            return;
+          }
+
+          const res = await fetch('http://localhost:3000/api/v1/image/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: providerId,
+              model: model,
+              prompt: processedPrompt,
+              size: size,
+              faceRef: currentFaceRef,
+              refImages: refImages
+            })
+          });
+
+          const resData = await res.json();
+          if (resData.data?.[0]) {
+            const img = resData.data[0].b64_json 
+              ? `data:image/png;base64,${resData.data[0].b64_json}` 
+              : resData.data[0].url;
+            
+            setGeneratedImg(img);
+            setNodes((nodes: any[]) =>
+              nodes.map((n) => {
+                if (n.id === id) {
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      outputs: {
+                        ...((n.data as any)?.outputs || {}),
+                        image: img,
+                        output: img,
+                        errorMsg: ''
+                      }
+                    }
+                  };
+                }
+                return n;
+              })
+            );
+
+            window.dispatchEvent(
+              new CustomEvent('add-success-log', {
+                detail: {
+                  nodeId: id,
+                  nodeName: data.label || 'AI 图像渲染',
+                  model: model,
+                  errorMsg: batchSize > 1 
+                    ? `🎉 第 ${i + 1}/${batchSize} 张图片生成成功！尺寸: ${size}` 
+                    : `图像生成成功 ✅ 尺寸: ${size}`,
+                  outputUrl: img,
+                  type: 'image'
+                }
+              })
+            );
+          } else {
+            const errorReason = resData.error || '生图接口未返回有效图片成果。';
+            throw new Error(errorReason);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error(e);
+      const errorReason = e.message || '底座生图服务连接失败';
+      setNodes((nodes: any[]) =>
+        nodes.map((n) => {
+          if (n.id === id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                outputs: {
+                  ...((n.data as any)?.outputs || {}),
+                  image: '',
+                  errorMsg: errorReason
+                }
+              }
+            };
+          }
+          return n;
+        })
+      );
+
+      window.dispatchEvent(
+        new CustomEvent('add-failure-log', {
+          detail: {
+            nodeId: id,
+            nodeName: data.label || 'AI 图像渲染',
+            model: model,
+            errorMsg: errorReason
+          }
+        })
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDownloadImage = () => {
+    const imgUrl = generatedImg || data.outputs?.image;
+    if (!imgUrl) {
+      alert('暂无可供下载的图片结果！');
+      return;
+    }
+    if (typeof (window as any).downloadFileDirectly === 'function') {
+      (window as any).downloadFileDirectly(imgUrl, `toonflow-canvas-${id}.png`);
+    } else {
+      const a = document.createElement('a');
+      a.href = imgUrl;
+      a.download = `toonflow-canvas-${id}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  const handleSpawnVideoFusion = () => {
+    if ((window as any).spawnLinkedNode) {
+      (window as any).spawnLinkedNode(id, 'video-fusion', 'right');
+    } else {
+      alert('未检测到智能连线引擎支持！');
+    }
+  };
+
+  return {
+    providerId,
+    size,
+    cfg,
+    steps,
+    refImages,
+    currentFaceRef,
+    promptInput,
+    showMentionList,
+    mentionSearch,
+    connectedImages,
+    activeTab,
+    runningHubTemplateId,
+    imageModels,
+    generating,
+    generatedImg,
+    settings,
+    isFullscreen,
+    isEditingName,
+    localName,
+    activePopover,
+    currentTemplate,
+    currentProviderModels,
+    model,
+    currentPrompt,
+    isPromptConnected,
+    isFaceRefConnected,
+    connectedPrompt,
+
+    fileInputRef,
+
+    setPromptInput,
+    setShowMentionList,
+    setIsFullscreen,
+    setIsEditingName,
+    setLocalName,
+    handleSaveName,
+    handleTabChange,
+    handleInputChange,
+    handleDelete,
+    handleFileChange,
+    handleRemoveRefImage,
+    handleOpenAssetsModal,
+    handleSelectMention,
+    handlePromptChange,
+    handleGenerateImage,
+    handleDownloadImage,
+    handleSpawnPromptSource,
+    handleSpawnVideoFusion,
+    handleAddRefImagePhysicalNode,
+    setActivePopover
+  };
+}
