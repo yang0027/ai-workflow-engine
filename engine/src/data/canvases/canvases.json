@@ -1,0 +1,40 @@
+[
+  {
+    "id": "3136c247-fd65-42f6-9c59-82fbbbb55e3f",
+    "name": "新画布 11:10:03",
+    "nodes": [
+      {
+        "id": "image-service-1779765032379",
+        "type": "image-service",
+        "position": {
+          "x": -270.21052631578954,
+          "y": 107.89473684210527
+        },
+        "width": 320,
+        "height": 480,
+        "data": {
+          "label": "🎨 智能生图",
+          "inputs": {},
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 480
+        }
+      }
+    ],
+    "edges": [],
+    "createdAt": "2026-05-26T03:10:03.722Z",
+    "updatedAt": "2026-05-26T03:10:55.165Z"
+  },
+  {
+    "id": "5790c2fc-59f9-464d-9679-88f62a7e692e",
+    "name": "新画布 11:10:56",
+    "nodes": [],
+    "edges": [],
+    "createdAt": "2026-05-26T03:10:56.488Z",
+    "updatedAt": "2026-05-26T03:16:34.661Z"
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "id": "ca0c27e7-ff49-4f3c-8881-8c723188188e",
+  "canvasId": "3136c247-fd65-42f6-9c59-82fbbbb55e3f",
+  "nodes": [
+    {
+      "id": "image-service-1779765032379",
+      "type": "image-service",
+      "position": {
+        "x": -270.21052631578954,
+        "y": 107.89473684210527
+      },
+      "width": 320,
+      "height": 480,
+      "data": {
+        "label": "🎨 智能生图",
+        "inputs": {},
+        "outputs": {},
+        "isNew": true
+      },
+      "selected": true,
+      "measured": {
+        "width": 320,
+        "height": 480
+      }
+    }
+  ],
+  "edges": [],
+  "createdAt": "2026-05-26T03:10:36.666Z",
+  "name": "新画布 11:10:03 - 更新前 2026/5/26 11:10:36"
+}

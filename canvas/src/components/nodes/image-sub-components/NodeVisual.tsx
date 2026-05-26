@@ -1,4 +1,5 @@
 import React from 'react';
+import { ResolvedMedia } from '../../ResolvedMedia';
 
 export interface NodeVisualProps {
   id: string;
@@ -154,9 +155,9 @@ export const NodeVisual: React.FC<NodeVisualProps> = ({
           </span>
         </div>
       ) : showImg ? (
-        <img 
-          src={showImg} 
-          alt="Generated Result" 
+        <ResolvedMedia 
+          url={showImg} 
+          type="image" 
           style={{ 
             width: '100%', 
             height: '100%', 

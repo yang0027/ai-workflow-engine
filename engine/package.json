@@ -9,8 +9,10 @@
     "start": "npx kill-port 4000 && node dist/app.js"
   },
   "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "axios": "^1.7.2",
     "fastify": "^4.28.1",
-    "axios": "^1.7.2"
+    "form-data": "^4.0.5"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

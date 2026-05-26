@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import FormData from 'form-data';
 import { CustomWorkflowPayload, InputMapping } from '../types.js';
 import { SettingsService } from '../../settings/SettingsService.js';
 
@@ -43,6 +44,100 @@ export class ComfyUIAdapter {
   }
 
   /**
+   * 将图片数据上传到 ComfyUI
+   * @param host ComfyUI 主机地址
+   * @param imageData base64 data URL 或 Buffer
+   * @param filename 文件名
+   * @returns ComfyUI 文件名
+   */
+  private async uploadImageToComfyUI(host: string, imageData: string | Buffer, filename: string): Promise<string> {
+    let buffer: Buffer;
+    let contentType = 'image/png';
+
+    // 处理 base64 data URL
+    if (typeof imageData === 'string') {
+      if (imageData.startsWith('data:')) {
+        const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          contentType = match[1];
+          buffer = Buffer.from(match[2], 'base64');
+        } else {
+          throw new Error('无效的 base64 图片格式');
+        }
+      } else if (imageData.startsWith('http')) {
+        // 如果是 URL，先下载
+        const response = await axios.get(imageData, { responseType: 'arraybuffer' });
+        buffer = Buffer.from(response.data);
+        contentType = String(response.headers['content-type'] || 'image/png');
+      } else {
+        throw new Error('不支持的图片格式');
+      }
+    } else {
+      buffer = imageData;
+    }
+
+    // 确保文件名有正确的扩展名
+    const extMap: Record<string, string> = {
+      'image/png': '.png',
+      'image/jpeg': '.jpg',
+      'image/webp': '.webp',
+      'image/jpg': '.jpg'
+    };
+    const ext = extMap[contentType] || path.extname(filename) || '.png';
+    const safeFilename = path.basename(filename, path.extname(filename)) + ext;
+
+    // 使用 form-data 上传
+    const formData = new FormData();
+    formData.append('image', buffer, {
+      filename: safeFilename,
+      contentType: contentType
+    });
+
+    const response = await axios.post(`${host}/upload/image`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 30000
+    });
+
+    if (response.data && response.data.name) {
+      console.log(`[ComfyUIAdapter] 📤 图片已上传到 ComfyUI: ${response.data.name}`);
+      return response.data.name;
+    }
+
+    throw new Error(`上传图片到 ComfyUI 失败: ${JSON.stringify(response.data)}`);
+  }
+
+  /**
+   * 处理图片输入值
+   * @param host ComfyUI 主机地址
+   * @param value 输入值 (db://, data:, http://, 或 ComfyUI 文件名)
+   * @returns ComfyUI 可识别的文件名
+   */
+  private async resolveImageInput(host: string, value: any): Promise<string> {
+    if (typeof value !== 'string' || !value) {
+      return value;
+    }
+
+    // 如果已经是 ComfyUI 文件名（不含特殊协议），直接返回
+    if (value.match(/\.(png|jpg|jpeg|webp|gif)$/i) && !value.startsWith('db://') && !value.startsWith('data:')) {
+      return value;
+    }
+
+    // 如果是 db:// 协议或 data: URL 或其他 URL，需要上传到 ComfyUI
+    if (value.startsWith('db://') || value.startsWith('data:') || value.startsWith('http')) {
+      const timestamp = Date.now();
+      const filename = `canvas_${timestamp}.png`;
+      try {
+        return await this.uploadImageToComfyUI(host, value, filename);
+      } catch (err: any) {
+        console.warn(`[ComfyUIAdapter] ⚠️ 图片上传失败: ${err.message}，使用原始值`);
+        return value;
+      }
+    }
+
+    return value;
+  }
+
+  /**
    * 核心：执行自定义 ComfyUI 工作流并智能灌参
    */
   public async executeCustomWorkflow(payload: CustomWorkflowPayload): Promise<string> {
@@ -62,18 +157,33 @@ export class ComfyUIAdapter {
       throw new Error(`解析 ComfyUI 工作流 JSON 失败，请确保格式为 API 格式: ${e}`);
     }
 
-    // 3. 动态灌参：遍历 mappings
-    payload.mappings.forEach((map: InputMapping) => {
-      const value = payload.inputs[map.portId];
-      if (value === undefined) {
-        console.warn(`[ComfyUIAdapter] ⚠️ 端口 ${map.portId} 连线未传入数据，使用工作流默认值`);
-        return;
+    // 3. 动态灌参：遍历 mappings，处理图片上传
+    for (const map of payload.mappings) {
+      let value = payload.inputs[map.portId];
+      if (value === undefined || value === '') {
+        console.warn(`[ComfyUIAdapter] ⚠️ 端口 ${map.portId} 未传入数据，使用工作流默认值`);
+        continue;
       }
 
-      // 递归寻找节点
+      // 检查是否是图片类型的字段
+      const fieldNameLower = (map.fieldName || '').toLowerCase();
+      const isImageField = fieldNameLower.includes('image') || fieldNameLower.includes('img') || fieldNameLower.includes('pic');
+
+      // 如果是图片字段，需要上传到 ComfyUI
+      if (isImageField) {
+        try {
+          value = await this.resolveImageInput(host, value);
+          console.log(`[ComfyUIAdapter] 📤 图片已处理: ${map.portId} -> ${value}`);
+        } catch (err: any) {
+          console.warn(`[ComfyUIAdapter] ⚠️ 图片处理失败: ${err.message}`);
+        }
+      }
+
+      // 寻找节点
       const targetNode = workflowJson[map.nodeId];
       if (!targetNode) {
-        throw new Error(`工作流 JSON 中找不到映射指定的节点 ID: ${map.nodeId}`);
+        console.warn(`[ComfyUIAdapter] ⚠️ 工作流 JSON 中找不到节点 ID: ${map.nodeId}`);
+        continue;
       }
 
       if (!targetNode.inputs) {
@@ -81,24 +191,28 @@ export class ComfyUIAdapter {
       }
 
       // 强力覆写参数
-      console.log(`[ComfyUIAdapter] ⚙️ 正在灌参: 节点 ${map.nodeId} [${map.fieldName}] = ${value}`);
+      const displayValue = typeof value === 'string' && value.length > 100 ? value.substring(0, 100) + '...' : value;
+      console.log(`[ComfyUIAdapter] ⚙️ 灌参: 节点 ${map.nodeId} [${map.fieldName}] = ${displayValue}`);
       targetNode.inputs[map.fieldName] = value;
-    });
+    }
 
     // 4. 提交任务到 ComfyUI
     let promptId = '';
     try {
+      console.log('[ComfyUIAdapter] 📋 提交到 ComfyUI 的工作流:', JSON.stringify(workflowJson).substring(0, 500) + '...');
       const response = await axios.post(`${host}/prompt`, {
         prompt: workflowJson
       });
       if (response.data && response.data.prompt_id) {
         promptId = response.data.prompt_id;
-        console.log(`[ComfyUIAdapter] 🚀 任务提交成功，ComfyUI Prompt ID: ${promptId}`);
+        console.log(`[ComfyUIAdapter] 🚀 任务提交成功，Prompt ID: ${promptId}`);
       } else {
         throw new Error(JSON.stringify(response.data));
       }
     } catch (e: any) {
-      throw new Error(`ComfyUI /prompt 提交失败: ${e.message}`);
+      const errorDetail = e.response?.data || e.message;
+      console.error(`[ComfyUIAdapter] ❌ ComfyUI /prompt 提交失败:`, errorDetail);
+      throw new Error(`ComfyUI /prompt 提交失败: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail}`);
     }
 
     // 5. 轮询 `/history/{promptId}`
@@ -162,7 +276,8 @@ export class ComfyUIAdapter {
         // 7. 物理联动：同步上传到 MinIO 的 workflows 桶中
         await this.uploadToMinio(uniqueName, fileBuffer);
 
-        downloadedUrl = `http://localhost:4000/outputs/${uniqueName}`;
+        const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
+        downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${encodeURIComponent(uniqueName)}`;
         break; // 只要解析到第一个有效的输出即可
       }
     }

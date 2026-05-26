@@ -1,0 +1,30 @@
+{
+  "id": "d9c1472a-09da-4309-aab2-497a7879abc5",
+  "canvasId": "5790c2fc-59f9-464d-9679-88f62a7e692e",
+  "nodes": [
+    {
+      "id": "video-fusion-1779765060330",
+      "type": "video-fusion",
+      "position": {
+        "x": -730.2105263157896,
+        "y": 3.68421052631579
+      },
+      "width": 320,
+      "height": 480,
+      "data": {
+        "label": "📹 视频生成",
+        "inputs": {},
+        "outputs": {},
+        "isNew": true
+      },
+      "selected": false,
+      "measured": {
+        "width": 320,
+        "height": 480
+      }
+    }
+  ],
+  "edges": [],
+  "createdAt": "2026-05-26T03:11:04.349Z",
+  "name": "新画布 11:10:56 - 更新前 2026/5/26 11:11:04"
+}

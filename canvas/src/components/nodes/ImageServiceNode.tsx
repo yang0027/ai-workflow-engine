@@ -13,6 +13,11 @@ interface ImageServiceNodeProps {
 export default function ImageServiceNode({ id, data, selected = false }: ImageServiceNodeProps) {
   const { setNodes, setEdges } = useReactFlow();
 
+  // 多选检测：只有单选时才显示菜单
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
+
   // 智能管线导流舱菜单状态
   const [showLeftDerive, setShowLeftDerive] = React.useState(false);
   const [showRightDerive, setShowRightDerive] = React.useState(false);
@@ -81,7 +86,7 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
       }}
     >
       {/* 物理删除悬浮按钮 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <button
           onClick={logic.handleDelete}
           style={{
@@ -189,7 +194,7 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
       />
 
       {/* 极窄配置命令面板 (图二规范) - 直接内挂在节点 DOM 内，享受浏览器 GPU 级别的绝对同步，绝无分离 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <ConfigPanel
           id={id}
           data={data}

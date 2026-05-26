@@ -1,5 +1,347 @@
 [
   {
+    "id": "a029faa5-172e-4325-b317-94a4cfc7ef2e",
+    "name": "测试runninghub文生图",
+    "source": "runninghub",
+    "capability": "image",
+    "workflowRef": "2059158027810459650",
+    "webLink": "https://www.runninghub.cn/workflow/2059158027810459650",
+    "rawWorkflowJson": {
+      "4": {
+        "inputs": {
+          "seed": 418900472991683,
+          "steps": 9,
+          "cfg": 1,
+          "sampler_name": "euler",
+          "scheduler": "FlowMatchEulerDiscreteScheduler",
+          "denoise": 1,
+          "model": [
+            "36",
+            0
+          ],
+          "positive": [
+            "5",
+            0
+          ],
+          "negative": [
+            "6",
+            0
+          ],
+          "latent_image": [
+            "7",
+            0
+          ]
+        },
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "K采样器"
+        }
+      },
+      "5": {
+        "inputs": {
+          "text": "\"8K超高清，佳能EOS R5，85mm f/1.4定焦镜头，f/1.8大光圈，单反实拍，RAW格式直出，真实摄影质感，无AI感\n1位20-25岁年轻东亚女性，极致精致网红长相，鹅蛋脸，杏眼，淡粉色水润唇，轻咬手指，直视镜头，妩媚慵懒\n浅棕大波浪卷发，侧分，发丝柔顺有光泽，长度及胸\n冷白皮，全身皮肤细腻通透，真实皮肤纹理、毛孔清晰可见，零磨皮感，极致通透肌肤，天鹅颈，直角肩，纤细腰腹，马甲线，完美比例大长腿\n细肩带吊带衫，不规则前短后长鱼尾半身裙\n右手佩戴细戒指，左手佩戴多层银色手链\n侧身站立，左手扶左侧原木色木门，右手轻抵下唇，身体微微前倾，全身完整入镜，人物占画面60%高度\n现代轻奢室内走廊，原木色木门，黑色金属把手，白色玻璃隔断，浅灰色大理石地面，背景自然虚化\n柔和室内漫射光，正前方主光源，侧后方轮廓光，光影过渡自然，无硬阴影，突出皮肤与身材线条\n富士胶片NC滤镜调色，冷白调，低饱和度，高级感，肤色通透，色彩干净\n竖幅构图，中心构图，人像黄金比例，超精细细节，极致真实感，电影感氛围\"",
+          "clip": [
+            "36",
+            1
+          ]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP文本编码器"
+        }
+      },
+      "6": {
+        "inputs": {
+          "conditioning": [
+            "5",
+            0
+          ]
+        },
+        "class_type": "ConditioningZeroOut",
+        "_meta": {
+          "title": "条件零化"
+        }
+      },
+      "7": {
+        "inputs": {
+          "width": 720,
+          "height": 1280,
+          "batch_size": 1
+        },
+        "class_type": "EmptyLatentImage",
+        "_meta": {
+          "title": "空Latent"
+        }
+      },
+      "8": {
+        "inputs": {
+          "samples": [
+            "4",
+            0
+          ],
+          "vae": [
+            "27",
+            0
+          ]
+        },
+        "class_type": "VAEDecode",
+        "_meta": {
+          "title": "VAE解码"
+        }
+      },
+      "24": {
+        "inputs": {
+          "filename_prefix": "ComfyUI",
+          "images": [
+            "8",
+            0
+          ]
+        },
+        "class_type": "SaveImage",
+        "_meta": {
+          "title": "保存图像"
+        }
+      },
+      "25": {
+        "inputs": {
+          "unet_name": "z_image_turbo_bf16.safetensors",
+          "weight_dtype": "default"
+        },
+        "class_type": "UNETLoader",
+        "_meta": {
+          "title": "UNET加载器"
+        }
+      },
+      "26": {
+        "inputs": {
+          "clip_name": "qwen_3_4b.safetensors",
+          "type": "hunyuan_image",
+          "device": "default"
+        },
+        "class_type": "CLIPLoader",
+        "_meta": {
+          "title": "CLIP加载器"
+        }
+      },
+      "27": {
+        "inputs": {
+          "vae_name": "z_image_turbo-vae.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "VAE加载器"
+        }
+      },
+      "36": {
+        "inputs": {
+          "lora_name": "20260401-44194071.safetensors",
+          "strength_model": 1,
+          "strength_clip": 1,
+          "model": [
+            "25",
+            0
+          ],
+          "clip": [
+            "26",
+            0
+          ]
+        },
+        "class_type": "LoraLoader",
+        "_meta": {
+          "title": "LoRA加载器"
+        }
+      }
+    },
+    "paramsSchema": [
+      {
+        "id": "4_seed",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "seed",
+        "label": "随机种子 [4] (KSampler)",
+        "type": "number",
+        "defaultValue": 418900472991683,
+        "exposed": true
+      },
+      {
+        "id": "4_steps",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "steps",
+        "label": "步数 [4] (KSampler)",
+        "type": "number",
+        "defaultValue": 9,
+        "exposed": true
+      },
+      {
+        "id": "4_cfg",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "cfg",
+        "label": "CFG [4] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": true
+      },
+      {
+        "id": "4_sampler_name",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "sampler_name",
+        "label": "sampler_name [4] (KSampler)",
+        "type": "select",
+        "defaultValue": "euler",
+        "exposed": false
+      },
+      {
+        "id": "4_scheduler",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "scheduler",
+        "label": "scheduler [4] (KSampler)",
+        "type": "select",
+        "defaultValue": "FlowMatchEulerDiscreteScheduler",
+        "exposed": false
+      },
+      {
+        "id": "4_denoise",
+        "nodeId": "4",
+        "classType": "KSampler",
+        "fieldName": "denoise",
+        "label": "重绘强度 [4] (KSampler)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": true
+      },
+      {
+        "id": "5_text",
+        "nodeId": "5",
+        "classType": "CLIPTextEncode",
+        "fieldName": "text",
+        "label": "文本 [5] (CLIPTextEncode)",
+        "type": "text",
+        "defaultValue": "\"8K超高清，佳能EOS R5，85mm f/1.4定焦镜头，f/1.8大光圈，单反实拍，RAW格式直出，真实摄影质感，无AI感\n1位20-25岁年轻东亚女性，极致精致网红长相，鹅蛋脸，杏眼，淡粉色水润唇，轻咬手指，直视镜头，妩媚慵懒\n浅棕大波浪卷发，侧分，发丝柔顺有光泽，长度及胸\n冷白皮，全身皮肤细腻通透，真实皮肤纹理、毛孔清晰可见，零磨皮感，极致通透肌肤，天鹅颈，直角肩，纤细腰腹，马甲线，完美比例大长腿\n细肩带吊带衫，不规则前短后长鱼尾半身裙\n右手佩戴细戒指，左手佩戴多层银色手链\n侧身站立，左手扶左侧原木色木门，右手轻抵下唇，身体微微前倾，全身完整入镜，人物占画面60%高度\n现代轻奢室内走廊，原木色木门，黑色金属把手，白色玻璃隔断，浅灰色大理石地面，背景自然虚化\n柔和室内漫射光，正前方主光源，侧后方轮廓光，光影过渡自然，无硬阴影，突出皮肤与身材线条\n富士胶片NC滤镜调色，冷白调，低饱和度，高级感，肤色通透，色彩干净\n竖幅构图，中心构图，人像黄金比例，超精细细节，极致真实感，电影感氛围\"",
+        "exposed": true
+      },
+      {
+        "id": "7_width",
+        "nodeId": "7",
+        "classType": "EmptyLatentImage",
+        "fieldName": "width",
+        "label": "宽度 [7] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 720,
+        "exposed": true
+      },
+      {
+        "id": "7_height",
+        "nodeId": "7",
+        "classType": "EmptyLatentImage",
+        "fieldName": "height",
+        "label": "高度 [7] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 1280,
+        "exposed": true
+      },
+      {
+        "id": "7_batch_size",
+        "nodeId": "7",
+        "classType": "EmptyLatentImage",
+        "fieldName": "batch_size",
+        "label": "batch_size [7] (EmptyLatentImage)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "24_filename_prefix",
+        "nodeId": "24",
+        "classType": "SaveImage",
+        "fieldName": "filename_prefix",
+        "label": "filename_prefix [24] (SaveImage)",
+        "type": "text",
+        "defaultValue": "ComfyUI",
+        "exposed": false
+      },
+      {
+        "id": "25_unet_name",
+        "nodeId": "25",
+        "classType": "UNETLoader",
+        "fieldName": "unet_name",
+        "label": "unet_name [25] (UNETLoader)",
+        "type": "select",
+        "defaultValue": "z_image_turbo_bf16.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "25_weight_dtype",
+        "nodeId": "25",
+        "classType": "UNETLoader",
+        "fieldName": "weight_dtype",
+        "label": "weight_dtype [25] (UNETLoader)",
+        "type": "text",
+        "defaultValue": "default",
+        "exposed": false
+      },
+      {
+        "id": "26_clip_name",
+        "nodeId": "26",
+        "classType": "CLIPLoader",
+        "fieldName": "clip_name",
+        "label": "clip_name [26] (CLIPLoader)",
+        "type": "select",
+        "defaultValue": "qwen_3_4b.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "27_vae_name",
+        "nodeId": "27",
+        "classType": "VAELoader",
+        "fieldName": "vae_name",
+        "label": "vae_name [27] (VAELoader)",
+        "type": "select",
+        "defaultValue": "z_image_turbo-vae.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "36_lora_name",
+        "nodeId": "36",
+        "classType": "LoraLoader",
+        "fieldName": "lora_name",
+        "label": "lora_name [36] (LoraLoader)",
+        "type": "select",
+        "defaultValue": "20260401-44194071.safetensors",
+        "exposed": false
+      },
+      {
+        "id": "36_strength_model",
+        "nodeId": "36",
+        "classType": "LoraLoader",
+        "fieldName": "strength_model",
+        "label": "strength_model [36] (LoraLoader)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      },
+      {
+        "id": "36_strength_clip",
+        "nodeId": "36",
+        "classType": "LoraLoader",
+        "fieldName": "strength_clip",
+        "label": "strength_clip [36] (LoraLoader)",
+        "type": "number",
+        "defaultValue": 1,
+        "exposed": false
+      }
+    ],
+    "inputMappings": [],
+    "outputMapping": {
+      "type": "image"
+    },
+    "createdAt": "2026-05-26T06:29:49.135Z",
+    "updatedAt": "2026-05-26T06:29:49.135Z"
+  },
+  {
     "id": "b6ab595e-20f5-49c3-9429-086f427df31f",
     "name": "本地测试",
     "source": "local_comfyui",

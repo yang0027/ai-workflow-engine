@@ -357,6 +357,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       // 重置编辑器状态并刷新列表
       handleResetEditor();
       fetchTemplates();
+      window.dispatchEvent(new CustomEvent('runninghub_workflows_updated'));
     } catch (e: any) {
       alert(`❌ 保存失败: ${e.message}`);
     } finally {
@@ -371,6 +372,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
         await WorkflowTemplateService.deleteTemplate(id);
         alert('🎉 模板已物理下线。');
         fetchTemplates();
+        window.dispatchEvent(new CustomEvent('runninghub_workflows_updated'));
         if (editingTemplateId === id) {
           handleResetEditor();
         }
@@ -988,7 +990,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                 cursor: 'pointer'
               }}
             >
-              <span>🔮</span> AI应用（工作流）
+              <span>🔮</span> AI应用 (RunningHub ID)
             </button>
             <button
               onClick={() => setActiveTab('templates')}
@@ -1008,7 +1010,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                 cursor: 'pointer'
               }}
             >
-              <span>🔮</span> 自定义工作流
+              <span>🔌</span> 自定义工作流 (JSON 解析)
             </button>
             <button
               onClick={() => setActiveTab('providers')}
@@ -1303,6 +1305,43 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                       <p style={{ fontSize: '12px', color: 'hsl(var(--text-muted))' }}>
                         支持通过输入 RunningHub 平台的 App ID，智能拉取云端工作流的物理输入字段，支持别名修改与参数勾选，保存后可立即在加号菜单的“我的工作流”中调用！
                       </p>
+                    </div>
+
+                    {/* ComfyUI 解析引导提示卡片 */}
+                    <div className="glass-card" style={{
+                      padding: '16px',
+                      background: 'rgba(14, 165, 233, 0.04)',
+                      border: '1px solid rgba(14, 165, 233, 0.25)',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>💡</span>
+                        <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(56, 189, 248, 1)', margin: 0 }}>关于 ComfyUI 工作流配置</h4>
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: '1.6' }}>
+                        由于本地 <b>ComfyUI</b> 实例集群采用本地运行架构，没有云端 App ID 抓取机制。如需配置与解析本地 ComfyUI 工作流，请直接点击下方按钮切换至<b>「自定义工作流 (JSON 解析)」</b>面板。在该面板中直接导入或粘贴本地导出的 <b>API 格式 JSON</b>，系统即可智能分析并提取所有可暴露的节点参数！
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <button
+                          onClick={() => setActiveTab('templates')}
+                          style={{
+                            background: 'rgba(14, 165, 233, 0.15)',
+                            border: '1px solid rgba(14, 165, 233, 0.4)',
+                            color: 'rgba(56, 189, 248, 1)',
+                            padding: '5px 14px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          🔌 前往「自定义工作流 (JSON 解析)」解析 ComfyUI JSON ➔
+                        </button>
+                      </div>
                     </div>
 
                     {/* 新增工作流表单 */}

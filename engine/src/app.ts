@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import { RunningHubClient } from './lib/RunningHubClient.js';
 import { TTSService } from './services/tts/TTSService.js';
 import { VideoService } from './services/video/VideoService.js';
@@ -8,6 +9,8 @@ import { CustomWorkflowParser } from './services/adapters/CustomWorkflowParser.j
 import { ComfyUIAdapter } from './services/adapters/impl/ComfyUIAdapter.js';
 import { RunningHubAdapter } from './services/adapters/impl/RunningHubAdapter.js';
 import { WorkflowTemplateService } from './services/workflow-templates/WorkflowTemplateService.js';
+import { ComfyUIWorkflowService } from './services/comfyui/ComfyUIWorkflowService.js';
+import { CanvasService } from './services/canvas/CanvasService.js';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
@@ -17,6 +20,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const fastify = Fastify({ logger: true });
+
+// 注册 CORS，允许前端 5173 端口访问
+await fastify.register(cors, {
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+});
 
 // 从环境变量中读取 RunningHub API Key，或者使用备用开发 Key (此处死锁为 ToonFlow 项目的集成规范)
 const RUNNINGHUB_API_KEY = process.env.RUNNINGHUB_API_KEY || 'dev_runninghub_api_key_toonflow';
@@ -29,6 +38,8 @@ const skillsService = SkillsService.getInstance();
 const workflowTemplateService = WorkflowTemplateService.getInstance();
 const comfyUIAdapter = new ComfyUIAdapter();
 const runningHubAdapter = new RunningHubAdapter();
+const comfyUIWorkflowService = ComfyUIWorkflowService.getInstance();
+const canvasService = CanvasService.getInstance();
 
 // 1. 健康状态接口
 fastify.get('/api/v1/engine/health', async () => {
@@ -103,7 +114,14 @@ fastify.get('/outputs/:filename', async (request, reply) => {
   if (fs.existsSync(filePath)) {
     const stream = fs.createReadStream(filePath);
     const ext = path.extname(filename).toLowerCase();
-    const mime = ext === '.mp4' ? 'video/mp4' : ext === '.mp3' ? 'audio/mpeg' : 'image/png';
+    let mime = 'image/png';
+    if (ext === '.mp4') mime = 'video/mp4';
+    else if (ext === '.mp3') mime = 'audio/mpeg';
+    else if (ext === '.mpeg' || ext === '.mpg') mime = 'video/mpeg';
+    else if (ext === '.wav') mime = 'audio/wav';
+    else if (ext === '.gif') mime = 'image/gif';
+    else if (ext === '.webp') mime = 'image/webp';
+    else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
     return reply.type(mime).send(stream);
   }
   return reply.status(404).send({ error: 'File not found' });
@@ -347,6 +365,25 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
 
     console.log(`[Engine] Generating image via ${providerId} model ${model} at ${endpoint}`);
 
+    // 如果是 b64_json 格式，需要将 base64 转为本地文件 URL
+    const saveBase64ToFile = async (base64Data: string): Promise<string> => {
+      const buffer = Buffer.from(base64Data, 'base64');
+      const filename = `std-img-${Date.now()}-${Math.random().toString(36).substr(2, 8)}.png`;
+      const outputDir = path.join(__dirname, '..', 'data', 'outputs');
+      
+      // 确保输出目录存在
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      
+      const filePath = path.join(outputDir, filename);
+      fs.writeFileSync(filePath, buffer);
+
+      // 返回走网关代理的 URL，彻底解决跨域与公网访问不回显问题
+      const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
+      return `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${filename}`;
+    };
+
     const response = await axios.post(endpoint, {
       model: model,
       prompt: prompt,
@@ -360,6 +397,19 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       },
       timeout: 25000
     });
+
+    // 处理响应：将 b64_json 转为文件 URL
+    if (response.data?.data && Array.isArray(response.data.data)) {
+      const processedData = await Promise.all(response.data.data.map(async (item: any) => {
+        if (item.b64_json) {
+          const fileUrl = await saveBase64ToFile(item.b64_json);
+          console.log(`[Engine] Converted b64_json to URL: ${fileUrl}`);
+          return { url: fileUrl };
+        }
+        return item;
+      }));
+      return { data: processedData };
+    }
 
     return response.data;
   } catch (err: any) {
@@ -419,6 +469,182 @@ fastify.post('/api/v1/engine/custom-workflow/execute', async (request, reply) =>
     fastify.log.error(err);
     return reply.status(500).send({ error: err.message });
   }
+});
+
+// ============ ComfyUI 工作流管理 API ============
+
+// 列出所有可用工作流
+fastify.get('/api/v1/engine/comfyui/workflows', async () => {
+  return {
+    success: true,
+    workflows: comfyUIWorkflowService.listWorkflows()
+  };
+});
+
+// 获取单个工作流配置
+fastify.get('/api/v1/engine/comfyui/workflows/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const workflow = comfyUIWorkflowService.getWorkflow(id);
+  if (!workflow) {
+    return reply.status(404).send({ error: 'Workflow not found' });
+  }
+  return { success: true, workflow };
+});
+
+// 获取工作流原始 JSON
+fastify.get('/api/v1/engine/comfyui/workflows/:id/json', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const workflow = comfyUIWorkflowService.getWorkflow(id);
+  if (!workflow) {
+    return reply.status(404).send({ error: 'Workflow not found' });
+  }
+  const json = comfyUIWorkflowService.getWorkflowJson(workflow.filename);
+  if (!json) {
+    return reply.status(404).send({ error: 'Workflow JSON file not found' });
+  }
+  return { success: true, json };
+});
+
+// 解析任意 ComfyUI 工作流 JSON 的字段
+fastify.post('/api/v1/engine/comfyui/workflows/parse', async (request, reply) => {
+  try {
+    const { json } = request.body as { json: any };
+    if (!json) {
+      return reply.status(400).send({ error: 'Missing workflow JSON' });
+    }
+    const fields = comfyUIWorkflowService.parseWorkflowFields(json);
+    return { success: true, fields };
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message });
+  }
+});
+
+// 保存自定义工作流配置
+fastify.post('/api/v1/engine/comfyui/workflows', async (request, reply) => {
+  try {
+    const config = request.body as any;
+    if (!config.id || !config.title) {
+      return reply.status(400).send({ error: 'Missing id or title' });
+    }
+    comfyUIWorkflowService.saveCustomWorkflow(config);
+    return { success: true, workflow: config };
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message });
+  }
+});
+
+// 删除自定义工作流
+fastify.delete('/api/v1/engine/comfyui/workflows/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const deleted = comfyUIWorkflowService.deleteCustomWorkflow(id);
+  if (!deleted) {
+    return reply.status(404).send({ error: 'Workflow not found or cannot be deleted' });
+  }
+  return { success: true, message: 'Workflow deleted' };
+});
+
+// ============ 画布 CRUD 路由 ============
+
+// 获取画布列表
+fastify.get('/api/v1/canvases', async () => {
+  return { success: true, canvases: canvasService.list() };
+});
+
+// 获取回收站画布列表
+fastify.get('/api/v1/canvases/deleted', async () => {
+  return { success: true, canvases: canvasService.listDeleted() };
+});
+
+// 获取单个画布
+fastify.get('/api/v1/canvases/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const canvas = canvasService.get(id);
+  if (!canvas) {
+    return reply.status(404).send({ error: 'Canvas not found' });
+  }
+  return { success: true, canvas };
+});
+
+// 创建画布
+fastify.post('/api/v1/canvases', async (request, reply) => {
+  try {
+    const { name } = request.body as { name?: string };
+    const canvas = canvasService.create(name || '未命名画布');
+    return { success: true, canvas };
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message });
+  }
+});
+
+// 更新画布
+fastify.put('/api/v1/canvases/:id', async (request, reply) => {
+  try {
+    const { id } = request.params as { id: string };
+    const data = request.body as { name?: string; nodes?: any[]; edges?: any[] };
+    const canvas = canvasService.update(id, data);
+    if (!canvas) {
+      return reply.status(404).send({ error: 'Canvas not found' });
+    }
+    return { success: true, canvas };
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message });
+  }
+});
+
+// 软删除画布（移入回收站）
+fastify.delete('/api/v1/canvases/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const deleted = canvasService.delete(id);
+  if (!deleted) {
+    return reply.status(404).send({ error: 'Canvas not found' });
+  }
+  return { success: true, message: 'Canvas moved to trash' };
+});
+
+// 恢复画布
+fastify.post('/api/v1/canvases/:id/restore', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const restored = canvasService.restore(id);
+  if (!restored) {
+    return reply.status(404).send({ error: 'Canvas not found in trash' });
+  }
+  return { success: true, message: 'Canvas restored' };
+});
+
+// 永久删除画布
+fastify.delete('/api/v1/canvases/:id/permanent', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  canvasService.permanentDelete(id);
+  return { success: true, message: 'Canvas permanently deleted' };
+});
+
+// ============ 画布快照路由 ============
+
+// 获取画布快照列表
+fastify.get('/api/v1/canvases/:id/snapshots', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const snapshots = canvasService.listSnapshots(id);
+  return { success: true, snapshots };
+});
+
+// 获取单个快照详情
+fastify.get('/api/v1/canvases/:canvasId/snapshots/:snapshotId', async (request, reply) => {
+  const { canvasId, snapshotId } = request.params as { canvasId: string; snapshotId: string };
+  const snapshot = canvasService.getSnapshot(canvasId, snapshotId);
+  if (!snapshot) {
+    return reply.status(404).send({ error: 'Snapshot not found' });
+  }
+  return { success: true, snapshot };
+});
+
+// 回滚到指定快照
+fastify.post('/api/v1/canvases/:id/rollback/:snapshotId', async (request, reply) => {
+  const { id, snapshotId } = request.params as { id: string; snapshotId: string };
+  const canvas = canvasService.rollback(id, snapshotId);
+  if (!canvas) {
+    return reply.status(404).send({ error: 'Canvas or snapshot not found' });
+  }
+  return { success: true, canvas, message: 'Rolled back to snapshot' };
 });
 
 // 启动服务 (监听在解耦端口 4000)

@@ -1,12 +1,18 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
 
 const fastify = Fastify({ logger: true });
 
-// 注册 CORS 与 WebSocket
+// 注册 CORS 与 WebSocket 和文件上传
 await fastify.register(cors, { origin: true });
 await fastify.register(websocket);
+await fastify.register(multipart, {
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB
+  }
+});
 
 const ENGINE_URL = 'http://localhost:4000';
 
@@ -241,6 +247,127 @@ fastify.post('/api/v1/custom-workflow/execute', async (request, reply) => {
     return reply.status(response.status).send(data);
   } catch (err: any) {
     return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// ============ 10.1 网关代理：ComfyUI 工作流管理 API ============
+
+// 列出所有可用工作流
+fastify.get('/api/v1/comfyui/workflows', async (request, reply) => {
+  try {
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows`);
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// 获取单个工作流配置
+fastify.get('/api/v1/comfyui/workflows/:id', async (request, reply) => {
+  try {
+    const { id } = request.params as { id: string };
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows/${id}`);
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// 获取工作流 JSON
+fastify.get('/api/v1/comfyui/workflows/:id/json', async (request, reply) => {
+  try {
+    const { id } = request.params as { id: string };
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows/${id}/json`);
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// 解析工作流 JSON 字段
+fastify.post('/api/v1/comfyui/workflows/parse', async (request, reply) => {
+  try {
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request.body)
+    });
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// 保存自定义工作流
+fastify.post('/api/v1/comfyui/workflows', async (request, reply) => {
+  try {
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request.body)
+    });
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// 删除自定义工作流
+fastify.delete('/api/v1/comfyui/workflows/:id', async (request, reply) => {
+  try {
+    const { id } = request.params as { id: string };
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/comfyui/workflows/${id}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// ============ 10.2 图片上传到 ComfyUI ============
+
+fastify.post('/api/v1/comfyui/upload', async (request, reply) => {
+  try {
+    // 获取上传的文件
+    const formData = await request.file();
+    if (!formData) {
+      return reply.status(400).send({ error: 'No file uploaded' });
+    }
+
+    const buffer = await formData.toBuffer();
+    const filename = formData.filename || 'image.png';
+
+    // 获取 ComfyUI 实例地址
+    const settingsRes = await fetch(`${ENGINE_URL}/api/v1/engine/settings`);
+    const settings = await settingsRes.json();
+    const instances = settings.comfyui_instances || ['127.0.0.1:8188'];
+    const host = `http://${instances[0]}`;
+
+    // 上传到 ComfyUI
+    const FormData = (await import('form-data')).default;
+    const fd = new FormData();
+    fd.append('image', buffer, { filename, contentType: formData.mimetype || 'image/png' });
+
+    const uploadRes = await fetch(`${host}/upload/image`, {
+      method: 'POST',
+      body: fd
+    });
+
+    if (!uploadRes.ok) {
+      return reply.status(500).send({ error: 'Failed to upload to ComfyUI' });
+    }
+
+    const result = await uploadRes.json();
+    return { files: [{ name: result.name || filename }] };
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Upload failed: ${err.message}` });
   }
 });
 

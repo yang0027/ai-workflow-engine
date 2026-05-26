@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
+import { WorkflowTemplateService } from '../../../services/workflow-template.service';
 
 // 定义 TTS 默认服务商与模型列表
 export const DEFAULT_PROVIDER_TTS_MODELS: Record<string, string[]> = {
@@ -59,13 +60,33 @@ export function useTTSNodeLogic({
     }
   }, [data.label]);
 
-  // 4. 获取 RunningHub 模板列表
+  // 4. 获取 RunningHub 与本地 ComfyUI 模板列表
   const [workflows, setWorkflows] = useState<any[]>(() => 
     RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'audio')
   );
   useEffect(() => {
+    const loadMergedWorkflows = async () => {
+      try {
+        const rhWorkflows = RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'audio');
+        const localTemplates = await WorkflowTemplateService.listTemplates();
+        const filteredTemplates = localTemplates.filter(t => !t.capability || t.capability === 'audio');
+        
+        const merged: any[] = [...rhWorkflows];
+        filteredTemplates.forEach(t => {
+          if (!merged.some(w => w.id === t.id)) {
+            merged.push(t);
+          }
+        });
+        setWorkflows(merged);
+      } catch (err) {
+        console.error('Failed to load merged workflows for audio node:', err);
+      }
+    };
+
+    loadMergedWorkflows();
+
     const handleUpdate = () => {
-      setWorkflows(RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'audio'));
+      loadMergedWorkflows();
     };
     window.addEventListener('runninghub_workflows_updated', handleUpdate);
     return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
@@ -314,7 +335,26 @@ export function useTTSNodeLogic({
 
   // 14. 核心：发起声色克隆/工作流合成任务
   const handleVoiceClone = async () => {
+    // 自动异步解析 db:// 引用为 Base64 真实数据
+    const resolveDbUrl = async (url: string): Promise<string> => {
+      if (typeof url === 'string' && url.startsWith('db://')) {
+        const mediaId = url.replace('db://', '');
+        const getMedia = (window as any).getMediaFromDB;
+        if (typeof getMedia === 'function') {
+          try {
+            const base64 = await getMedia(mediaId);
+            if (base64) return base64;
+          } catch (err) {
+            console.warn(`[useTTSNodeLogic] Failed to resolve db://:`, err);
+          }
+        }
+      }
+      return url;
+    };
+
     const finalText = isTextConnected ? connectedPrompt : (data.inputs?.text || '');
+    const resolvedRefAudio = await resolveDbUrl(currentRefAudio);
+
     setCloning(true);
     setClonedAudio('');
 
@@ -348,7 +388,7 @@ export function useTTSNodeLogic({
             textParamIndex++;
           } else if (isAudio) {
             if (audioParamIndex === 0) {
-              aixInputs[inputKey] = currentRefAudio;
+              aixInputs[inputKey] = resolvedRefAudio;
             } else {
               aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
             }
@@ -371,7 +411,7 @@ export function useTTSNodeLogic({
           if (isText) {
             val = finalText;
           } else if (isAudio) {
-            val = currentRefAudio;
+            val = resolvedRefAudio;
           }
 
           return {
@@ -383,10 +423,15 @@ export function useTTSNodeLogic({
           };
         });
 
-        // 提交云端工作流
+        const wfSource = currentTemplate.source || 'runninghub';
+        const wfIdOrJson = wfSource === 'local_comfyui'
+          ? (currentTemplate.rawWorkflowJson ? JSON.stringify(currentTemplate.rawWorkflowJson) : '')
+          : (currentTemplate.workflowRef || currentTemplate.appId);
+
+        // 提交云端或本地 ComfyUI 工作流
         const outputUrl = await RunningHubService.executeCustomWorkflow(
-          'runninghub',
-          currentTemplate.appId,
+          wfSource,
+          wfIdOrJson,
           aixInputs,
           dynamicMappings
         );
@@ -449,7 +494,7 @@ export function useTTSNodeLogic({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            audioBase64: currentRefAudio,
+            audioBase64: resolvedRefAudio,
             characterName: characterName,
             text: finalText,
             providerId: providerId,

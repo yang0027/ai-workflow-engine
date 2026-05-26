@@ -13,6 +13,11 @@ interface TTSServiceNodeProps {
 export default function TTSServiceNode({ id, data, selected = false }: TTSServiceNodeProps) {
   const { setNodes, setEdges } = useReactFlow();
 
+  // 多选检测：只有单选时才显示菜单
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
+
   // 智能管线导流舱菜单状态
   const [showLeftDerive, setShowLeftDerive] = useState(false);
   const [showRightDerive, setShowRightDerive] = useState(false);
@@ -38,8 +43,7 @@ export default function TTSServiceNode({ id, data, selected = false }: TTSServic
       if (!srcNode) return;
       const outputs = (srcNode.data?.outputs || {}) as any;
       const inputs = (srcNode.data?.inputs || {}) as any;
-      
-      const val = outputs.output || outputs.audio || outputs.text || outputs.prompt || outputs.storyboard || inputs.text || '';
+      const val = outputs.output || outputs.audio || outputs.text || outputs.prompt || outputs.storyboard || inputs.fileUrl || inputs.text || '';
       if (!val) return;
 
       if (typeof val === 'string') {
@@ -113,7 +117,7 @@ export default function TTSServiceNode({ id, data, selected = false }: TTSServic
       }}
     >
       {/* 物理删除悬浮按钮 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <button
           onClick={logic.handleDelete}
           style={{
@@ -224,7 +228,7 @@ export default function TTSServiceNode({ id, data, selected = false }: TTSServic
       />
 
       {/* 底部悬浮配置面板 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <ConfigPanel
           id={id}
           data={data}

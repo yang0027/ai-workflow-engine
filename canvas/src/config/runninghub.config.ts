@@ -4,7 +4,7 @@ export interface RunningHubWorkflow {
   appId: string;
   description: string;
   nodeInfoList: any[];
-  capability?: 'image' | 'video' | 'audio' | 'workflow';
+  capability?: string;
 }
 
 export const DEFAULT_RUNNINGHUB_WORKFLOWS: RunningHubWorkflow[] = [

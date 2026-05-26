@@ -72,57 +72,15 @@ export class SettingsService {
         isChanged = true;
       }
 
-      // 扫描并载入 Toonflow 原厂 vendor 物理配置中的 models 预设模型
-      const vendorDir = 'E:\\二开Toonflow-app\\原版备份\\Toonflow-app-master\\Toonflow-app-master\\data\\vendor';
-      
       const defaultChat = ['MiniMax-M2.7', 'MiniMax-M2.5', 'gpt-4o', 'deepseek-chat', 'qwen-plus'];
       const defaultImage = ['Doubao-Seedream-5.0-Lite', 'Flux-1-Dev', 'SDXL-Turbo'];
       const defaultVideo = ['Wan2.6-I2V-1080P', 'doubao-seedance-1-5-pro-251215', 'ViduQ3-pro', 'Kling-v2'];
       const defaultTts = ['RunningHub-TTS-VoiceClone', 'MiniMax-TTS', 'Fish-Speech-1.4'];
 
-      const chatSet = new Set<string>(defaultChat);
-      const imageSet = new Set<string>(defaultImage);
-      const videoSet = new Set<string>(defaultVideo);
-      const ttsSet = new Set<string>(defaultTts);
-
-      if (fs.existsSync(vendorDir)) {
-        const files = fs.readdirSync(vendorDir);
-        for (const file of files) {
-          if (file.endsWith('.ts')) {
-            const filePath = path.join(vendorDir, file);
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const modelsBlockMatch = content.match(/models:\s*\[([\s\S]*?)\]/);
-            if (modelsBlockMatch) {
-              const block = modelsBlockMatch[1];
-              const items = block.match(/\{[\s\S]*?\}/g) || [];
-              for (const item of items) {
-                const nameMatch = item.match(/name:\s*["'`]([^"'`]+)["'`]/);
-                const typeMatch = item.match(/type:\s*["'`]([^"'`]+)["'`]/);
-                const modelNameMatch = item.match(/modelName:\s*["'`]([^"'`]+)["'`]/);
-                if (nameMatch && typeMatch && modelNameMatch) {
-                  const type = typeMatch[1];
-                  const modelName = modelNameMatch[1];
-                  
-                  if (type === 'text') {
-                    chatSet.add(modelName);
-                  } else if (type === 'image') {
-                    imageSet.add(modelName);
-                  } else if (type === 'video') {
-                    videoSet.add(modelName);
-                  } else if (type === 'tts') {
-                    ttsSet.add(modelName);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      const nextChat = Array.from(chatSet);
-      const nextImage = Array.from(imageSet);
-      const nextVideo = Array.from(videoSet);
-      const nextTts = Array.from(ttsSet);
+      const nextChat = defaultChat;
+      const nextImage = defaultImage;
+      const nextVideo = defaultVideo;
+      const nextTts = defaultTts;
 
       const cache = this.memorySettings.model_cache;
       const updatedCache = {

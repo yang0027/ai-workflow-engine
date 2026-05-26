@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ResolvedMedia } from '../../ResolvedMedia';
 
 export interface ConfigPanelProps {
   id: string;
@@ -653,7 +654,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                       </button>
                     )}
                   </div>
-                  <audio src={currentRefAudio} controls style={{ width: '100%', height: '24px', outline: 'none' }} />
+                  <ResolvedMedia url={currentRefAudio} type="audio" controls style={{ width: '100%', height: '24px', outline: 'none' }} />
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', justifyContent: 'center', padding: '12px 0' }}>

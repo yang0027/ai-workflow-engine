@@ -58,6 +58,11 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const nodes = useNodes();
 
+  // 多选检测：只有单选时才显示创意工具箱
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
+
   const fileType = data.inputs?.fileType || null;
   const fileUrl = data.inputs?.fileUrl || data.outputs?.output || '';
   const fileName = data.inputs?.fileName || '';
@@ -117,6 +122,59 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
 
   const processFile = (file: File) => {
     try {
+      let detectedType: 'image' | 'video' | 'audio' = 'image';
+      if (file.type.startsWith('video/')) {
+        detectedType = 'video';
+      } else if (file.type.startsWith('audio/')) {
+        detectedType = 'audio';
+      }
+
+      // 针对大容量的视频或音频文件，直接使用浏览器原生 Blob URL 避免 FileReader 和 IndexedDB 爆容量过载
+      if (detectedType === 'video' || detectedType === 'audio') {
+        const blobUrl = URL.createObjectURL(file);
+        
+        const saveAndSetNodeData = async (finalUrl: string) => {
+          try {
+            const addAsset = (window as any).addUploadedAsset;
+            if (typeof addAsset === 'function') {
+              await addAsset(detectedType, finalUrl, `📦 上传资源: ${file.name}`);
+            }
+
+            setNodes((nds) =>
+              nds.map((n) => {
+                if (n.id === id) {
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      inputs: {
+                        ...(n.data?.inputs as any),
+                        fileType: detectedType,
+                        fileUrl: finalUrl,
+                        fileName: file.name,
+                      },
+                      outputs: {
+                        ...(n.data?.outputs as any),
+                        output: finalUrl,
+                        fileType: detectedType,
+                      },
+                    },
+                  };
+                }
+                return n;
+              })
+            );
+          } catch (innerErr) {
+            console.error('[UploadNode] saveAndSetNodeData async error:', innerErr);
+            alert('本地上传文件保存失败，请重试！');
+          }
+        };
+
+        saveAndSetNodeData(blobUrl);
+        return;
+      }
+
+      // 图片文件继续保留高效的 IndexedDB 虚拟化 db:// 协议以配合后端 ComfyUI 的同步上传
       const reader = new FileReader();
       reader.onerror = (err) => {
         console.error('[UploadNode] FileReader error:', err);
@@ -126,12 +184,6 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
         try {
           if (typeof reader.result === 'string') {
             const base64 = reader.result;
-            let detectedType: 'image' | 'video' | 'audio' = 'image';
-            if (file.type.startsWith('video/')) {
-              detectedType = 'video';
-            } else if (file.type.startsWith('audio/')) {
-              detectedType = 'audio';
-            }
 
             const saveAndSetNodeData = async (b64: string) => {
               try {
@@ -462,8 +514,8 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
       className="relative"
       style={{
         position: 'relative',
-        width: '300px',
-        height: '260px',
+        width: '180px',
+        height: '180px',
         fontFamily: 'var(--font-sans)',
         userSelect: 'none',
       }}
@@ -956,12 +1008,12 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
       </Handle>
 
       {/* 移植的创意工具箱: 选中 Image 类型且选中节点时, 在上方以悬浮工具栏呈现 */}
-      {selected && fileType === 'image' && fileUrl && (
+      {selected && !isMultiSelected && fileType === 'image' && fileUrl && (
         <div
           className="nodrag"
           style={{
             position: 'absolute',
-            bottom: '275px', // 在节点正上方展示，预留完美呼吸间距
+            bottom: '190px', // 在节点正上方展示，紧贴 180px 卡片顶部，10px 边距无缝组合
             left: '50%',
             transform: 'translateX(-50%)',
             width: '580px',

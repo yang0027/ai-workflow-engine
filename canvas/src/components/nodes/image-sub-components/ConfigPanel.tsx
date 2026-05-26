@@ -1,5 +1,6 @@
 import React from 'react';
 import { DEFAULT_PROVIDER_IMAGE_MODELS } from './useImageNodeLogic';
+import { ResolvedMedia } from '../../ResolvedMedia';
 
 // 性能特优且酷炫的 inline badge 解析器：文本 -> 富文本 HTML (绿色高亮带微缩图)
 const convertPromptToHTML = (text: string, connectedImages: any[]) => {
@@ -51,7 +52,7 @@ export interface ConfigPanelProps {
   size: string;
   cfg: number;
   steps: number;
-  refImages: string[];
+  refImages: any[];
   promptInput: string;
   showMentionList: boolean;
   mentionSearch: string;
@@ -135,13 +136,13 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
     };
   }, [activePopover, setActivePopover]);
 
-  // 提示词文本框高度根据字数自适应变大 (最小 42px，最大 140px，超出滚动)
+  // 提示词文本框高度根据字数自适应变大 (最小 42px，最大 160px，写满 6 行后超出滚动)
   React.useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
       const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 42), 140)}px`;
+      textarea.style.height = `${Math.min(Math.max(scrollHeight, 42), 160)}px`;
     }
   }, [currentPrompt]);
 
@@ -317,6 +318,12 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
             border-style: solid;
             border-color: rgba(11, 15, 26, 0.98) transparent transparent transparent;
           }
+          .gallery-popover-right::after {
+            top: 50% !important;
+            left: -12px !important;
+            transform: translateY(-50%) !important;
+            border-color: transparent rgba(11, 15, 26, 0.98) transparent transparent !important;
+          }
           .hover-vendor-item {
             display: flex;
             justify-content: space-between;
@@ -390,7 +397,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
         `}</style>
 
         {/* 隐藏本地上传 input */}
-        <input type="file" ref={fileInputRef as any} onChange={handleFileChange} accept="image/*" multiple style={{ display: 'none' }} />
+        <input type="file" ref={fileInputRef as any} onChange={handleFileChange} accept="image/*,video/*,audio/*" multiple style={{ display: 'none' }} />
 
         {/* 极窄常驻生图控制行 */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
@@ -433,7 +440,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                 width: '100%',
                 height: 'auto',
                 minHeight: '42px',
-                maxHeight: '140px',
+                maxHeight: '160px',
                 background: 'rgba(255, 255, 255, 0.03)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '8px',
@@ -456,8 +463,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
             {/* @ 选中的图像在文本框正下方渲染极其惊艳的“微型缩略图 Tag”组 (第 5 点) */}
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '1px' }}>
               {connectedImages.map((img, idx) => {
-                // 精准匹配 @[图1] 格式以绝对隔离多图干扰，只显示实际被引用的选中的图
-                const isMentioned = promptInput.includes(`@[图${idx + 1}]`) || promptInput.includes(`[${img.nodeName}]`);
+                const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
+                const isMentioned = promptInput.includes(`@[${label}${idx + 1}]`) || promptInput.includes(`[${img.nodeName}]`);
                 if (isMentioned) {
                   return (
                     <div 
@@ -476,8 +483,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                         transition: 'all 0.15s'
                       }}
                     >
-                      <img src={img.url} style={{ width: '12px', height: '12px', borderRadius: '2px', objectFit: 'cover' }} />
-                      <span>@图{idx + 1}</span>
+                      <ResolvedMedia url={img.url} type={img.type} style={{ width: '12px', height: '12px', borderRadius: '2px', objectFit: 'cover' }} />
+                      <span>@{label}{idx + 1}</span>
                     </div>
                   );
                 }
@@ -507,33 +514,36 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                 <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', padding: '4px 6px', fontWeight: 'bold' }}>
                   🔗 引用上游已连线图像：
                 </div>
-                {connectedImages.map((img, idx) => (
-                  <div
-                    key={img.nodeId}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSelectMention(idx, img.nodeName);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '10px',
-                      color: '#fff',
-                      background: 'transparent',
-                      transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <img src={img.url} style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
-                    <span>{img.nodeName} (图{idx + 1})</span>
-                  </div>
-                ))}
+                {connectedImages.map((img, idx) => {
+                  const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
+                  return (
+                    <div
+                      key={img.nodeId}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSelectMention(idx, img.nodeName);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '10px',
+                        color: '#fff',
+                        background: 'transparent',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <ResolvedMedia url={img.url} type={img.type} style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
+                      <span>{img.nodeName} ({label}{idx + 1})</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -792,13 +802,22 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
         {/* Popover 4: 画廊弹窗 */}
         {activePopover === 'gallery' && (
-          <div className="popover-floating-card" style={{ width: '310px', left: '72%' }}>
+          <div 
+            className="popover-floating-card gallery-popover-right" 
+            style={{ 
+              width: '310px', 
+              left: 'calc(50% + 102px)', 
+              top: '-220px',
+              bottom: 'auto',
+              transform: 'none' 
+            }}
+          >
             <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>
               <span>🖼️ 角色参考图画廊 ({refImages.length}/6)</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
-              {refImages.map((imgUrl, idx) => (
+              {refImages.map((img, idx) => (
                 <div 
                   key={idx} 
                   style={{ 
@@ -811,7 +830,19 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                     boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
                   }}
                 >
-                  <img src={imgUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={`Ref ${idx + 1}`} />
+                  {img.type === 'audio' ? (
+                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #1e1b4b 0%, #311042 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', display: 'block' }}>🎵</span>
+                      <span style={{ fontSize: '8px', color: '#c084fc', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '80%', display: 'block' }}>音频</span>
+                    </div>
+                  ) : img.type === 'video' ? (
+                    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                      <ResolvedMedia url={img.url} type="video" autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <span style={{ position: 'absolute', bottom: '4px', left: '4px', fontSize: '10px', background: 'rgba(0,0,0,0.6)', padding: '1px 3px', borderRadius: '3px', zIndex: 10 }}>🎥</span>
+                    </div>
+                  ) : (
+                    <ResolvedMedia url={img.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
                   
                   <button
                     onClick={(e) => {
@@ -827,7 +858,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                     ×
                   </button>
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.7)', fontSize: '8px', textAlign: 'center', padding: '1px 0' }}>
-                    图{idx + 1}
+                    {img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频'}{idx + 1}
                   </div>
                 </div>
               ))}

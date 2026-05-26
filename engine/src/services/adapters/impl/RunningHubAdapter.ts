@@ -147,10 +147,11 @@ export class RunningHubAdapter {
 
       // 7. 同步联动上传到本地 MinIO
       const minioOk = await this.uploadToMinio(uniqueName, fileBuffer);
+      const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
       if (minioOk) {
-        downloadedUrl = `http://localhost:19000/workflows/${uniqueName}`;
+        downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:19000/workflows/${encodeURIComponent(uniqueName)}`;
       } else {
-        downloadedUrl = `http://localhost:4000/outputs/${uniqueName}`;
+        downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${encodeURIComponent(uniqueName)}`;
       }
     } catch (e: any) {
       console.error(`[RunningHubAdapter] 下载或存储输出文件发生异常: ${e.message}`);

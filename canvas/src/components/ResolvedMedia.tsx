@@ -12,6 +12,7 @@ interface ResolvedMediaProps {
   loop?: boolean;
   muted?: boolean;
   playsInline?: boolean;
+  onEnded?: () => void;
 }
 
 // Convert Base64 Data URL to Blob for high-performance rendering without memory leaks or GPU crashes
@@ -52,7 +53,8 @@ export function ResolvedMedia({
   autoPlay,
   loop,
   muted,
-  playsInline
+  playsInline,
+  onEnded
 }: ResolvedMediaProps) {
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
 
@@ -179,6 +181,7 @@ export function ResolvedMedia({
         muted={muted}
         playsInline={playsInline}
         onClick={onClick}
+        onEnded={onEnded}
       />
     );
   } else if (type === 'audio') {
@@ -192,6 +195,7 @@ export function ResolvedMedia({
         autoPlay={autoPlay}
         loop={loop}
         onClick={onClick}
+        onEnded={onEnded}
       />
     );
   }

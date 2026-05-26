@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
+import { WorkflowTemplateService } from '../../../services/workflow-template.service';
 
 export const DEFAULT_PROVIDER_IMAGE_MODELS: Record<string, string[]> = {
   minimax: ['image-01'],
@@ -41,9 +42,9 @@ export function useImageNodeLogic({
     }).join('|');
   }, [nodes]);
 
-  // 1. 解析上游指向当前节点的所有图像并进行严格去重，支持最多 6 个，同时排除视频/音频以防止黑屏
+  // 1. 解析上游指向当前节点的所有资产并进行严格去重，支持最多 6 个，同时支持图片、视频和音频
   const connectedImages = useMemo(() => {
-    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref，彻底绝杀 React Commit Phase 的 useEffect 异步旧值漏洞
+    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref
     nodesRef.current = nodes;
     edgesRef.current = edges;
 
@@ -51,7 +52,7 @@ export function useImageNodeLogic({
     const currentNodes = nodesRef.current;
 
     const connectedEdges = currentEdges.filter(e => e.target === id);
-    const imgs: { url: string; nodeName: string; nodeId: string }[] = [];
+    const imgs: { url: string; type: 'image' | 'video' | 'audio'; nodeName: string; nodeId: string }[] = [];
 
     connectedEdges.forEach(edge => {
       const srcNode = currentNodes.find(n => n.id === edge.source);
@@ -62,32 +63,32 @@ export function useImageNodeLogic({
       const val = outputs.output || outputs.text || outputs.storyboard || outputs.image || inputs.fileUrl || inputs.text || '';
       if (!val || typeof val !== 'string') return;
 
-      const isVideoOrAudio = 
+      const uploadFileType = inputs?.fileType || outputs?.fileType;
+      
+      let type: 'image' | 'video' | 'audio' = 'image';
+      
+      const isAudio = 
         val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.ogg') || val.endsWith('.m4a') ||
+        val.startsWith('data:audio/') || srcNode.type === 'tts-service' ||
+        (srcNode.type === 'upload-node' && uploadFileType === 'audio');
+        
+      const isVideo = 
         val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') ||
-        val.startsWith('data:audio/') || val.startsWith('data:video/') ||
-        val.includes('media-asset-') && (val.includes('audio') || val.includes('video')) ||
-        srcNode.type === 'tts-service';
+        val.startsWith('data:video/') || srcNode.type === 'video-fusion' ||
+        (srcNode.type === 'upload-node' && uploadFileType === 'video');
 
-      if (isVideoOrAudio) {
-        return; // 静默排除，绝不流入图像节点防止黑屏
-      }
+      if (isAudio) type = 'audio';
+      else if (isVideo) type = 'video';
 
-      const isImage = 
-        val.startsWith('data:image/') || val.startsWith('db://') ||
-        val.endsWith('.png') || val.endsWith('.jpg') || val.endsWith('.jpeg') || val.endsWith('.webp') ||
-        srcNode.type === 'upload-node' || srcNode.type === 'image-service';
-
-      if (isImage) {
-        imgs.push({
-          url: val,
-          nodeName: srcNode.data?.label || srcNode.data?.title || '未命名图像',
-          nodeId: srcNode.id
-        });
-      }
+      imgs.push({
+        url: val,
+        type,
+        nodeName: srcNode.data?.label || srcNode.data?.title || (type === 'image' ? '图像' : type === 'video' ? '视频' : '音频'),
+        nodeId: srcNode.id
+      });
     });
 
-    // 严格按 nodeId 进行物理去重，防止 `@` 列表展示重复图片
+    // 严格按 nodeId 进行物理去重，防止 `@` 列表展示重复资产
     const uniqueImgs: typeof imgs = [];
     const seenIds = new Set<string>();
     imgs.forEach(img => {
@@ -144,13 +145,37 @@ export function useImageNodeLogic({
 
   // 多参考图画廊融合
   const refImages = useMemo(() => {
-    const connUrls = connectedImages.map(img => img.url);
+    const list: { url: string, type: 'image' | 'video' | 'audio', nodeId?: string }[] = [];
+    
+    // 1. 连线资产
+    connectedImages.forEach(img => {
+      list.push({
+        url: img.url,
+        type: img.type,
+        nodeId: img.nodeId
+      });
+    });
+
+    // 2. 本地历史资产（排重）
     const localRefs = data.inputs?.refImages || (data.inputs?.faceRef ? [data.inputs.faceRef] : []);
-    const merged = [...new Set([...connUrls, ...localRefs])];
-    return merged.slice(0, 6);
+    localRefs.forEach((refUrl: string) => {
+      if (list.some(item => item.url === refUrl)) return;
+      
+      let type: 'image' | 'video' | 'audio' = 'image';
+      const lower = refUrl.toLowerCase();
+      if (lower.includes('audio') || refUrl.endsWith('.mp3') || refUrl.endsWith('.wav')) type = 'audio';
+      else if (lower.includes('video') || refUrl.endsWith('.mp4') || refUrl.endsWith('.webm')) type = 'video';
+      
+      list.push({
+        url: refUrl,
+        type
+      });
+    });
+
+    return list.slice(0, 6);
   }, [connectedImages, data.inputs?.refImages, data.inputs?.faceRef]);
 
-  const currentFaceRef = refImages[0] || '';
+  const currentFaceRef = refImages[0]?.url || '';
   
   // 4. 输入状态
   const [promptInput, setPromptInput] = useState(data.inputs?.prompt && data.inputs.prompt !== 'null' ? data.inputs.prompt : '');
@@ -199,8 +224,28 @@ export function useImageNodeLogic({
     RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image')
   );
   useEffect(() => {
+    const loadMergedWorkflows = async () => {
+      try {
+        const rhWorkflows = RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image');
+        const localTemplates = await WorkflowTemplateService.listTemplates();
+        const filteredTemplates = localTemplates.filter(t => !t.capability || t.capability === 'image');
+        
+        const merged: any[] = [...rhWorkflows];
+        filteredTemplates.forEach(t => {
+          if (!merged.some(w => w.id === t.id)) {
+            merged.push(t);
+          }
+        });
+        setWorkflows(merged);
+      } catch (err) {
+        console.error('Failed to load merged workflows for image node:', err);
+      }
+    };
+
+    loadMergedWorkflows();
+
     const handleUpdate = () => {
-      setWorkflows(RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image'));
+      loadMergedWorkflows();
     };
     window.addEventListener('runninghub_workflows_updated', handleUpdate);
     return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
@@ -342,7 +387,7 @@ export function useImageNodeLogic({
   };
 
   // 9. 添加物理 upload-node 左侧错落生成逻辑 (杜绝闭包旧值，动态绝对定位到 X: -420 安全避让)
-  const handleAddRefImagePhysicalNode = (base64Data?: string, fileName?: string) => {
+  const handleAddRefImagePhysicalNode = (base64Data?: string, fileName?: string, mimeType?: string) => {
     if ((window as any).spawnLinkedNode) {
       const currentNode = nodes.find(n => n.id === id);
       const posX = currentNode ? currentNode.position.x : 0;
@@ -354,10 +399,22 @@ export function useImageNodeLogic({
       
       const staggeredOffsetY = -120 + connCount * 80; 
 
+      // 智能提取多媒体文件类型
+      let fileType: 'image' | 'video' | 'audio' = 'image';
+      const nameLower = (fileName || '').toLowerCase();
+      const mimeLower = (mimeType || '').toLowerCase();
+      const urlLower = (base64Data || '').toLowerCase();
+      
+      if (mimeLower.startsWith('audio/') || nameLower.endsWith('.mp3') || nameLower.endsWith('.wav') || urlLower.endsWith('.mp3') || urlLower.endsWith('.wav')) {
+        fileType = 'audio';
+      } else if (mimeLower.startsWith('video/') || nameLower.endsWith('.mp4') || nameLower.endsWith('.webm') || urlLower.endsWith('.mp4') || urlLower.endsWith('.webm')) {
+        fileType = 'video';
+      }
+
       (window as any).spawnLinkedNode(id, 'upload-node', 'left', {
-        fileType: 'image',
+        fileType,
         fileUrl: base64Data || '',
-        fileName: fileName || `参考图-${connCount + 1}`,
+        fileName: fileName || `${fileType === 'video' ? '视频' : (fileType === 'audio' ? '音频' : '参考图')}-${connCount + 1}`,
         position: { x: posX - 420, y: posY + staggeredOffsetY } // 严格定位在左侧 420 像素远端，保持清爽连线
       });
     } else {
@@ -384,7 +441,7 @@ export function useImageNodeLogic({
             finalUrl = `db://${mediaId}`;
           }
 
-          handleAddRefImagePhysicalNode(finalUrl, file.name);
+          handleAddRefImagePhysicalNode(finalUrl, file.name, file.type);
         }
       };
       reader.readAsDataURL(file);
@@ -407,9 +464,9 @@ export function useImageNodeLogic({
   // 监听全局资产回调 (动态避让 X: -420)
   useEffect(() => {
     const handleAssetsSelect = (e: any) => {
-      const { nodeTarget, selectedUrl, type } = e.detail || {};
-      if (nodeTarget === id && type === 'image' && selectedUrl) {
-        handleAddRefImagePhysicalNode(selectedUrl, '素材库选入图片');
+      const { nodeTarget, selectedUrl } = e.detail || {};
+      if (nodeTarget === id && selectedUrl) {
+        handleAddRefImagePhysicalNode(selectedUrl, '素材库选入资产');
       }
     };
     window.addEventListener('assets-selected' as any, handleAssetsSelect);
@@ -435,8 +492,10 @@ export function useImageNodeLogic({
   };
 
   const handleSelectMention = (imgIndex: number, imgName: string) => {
+    const asset = connectedImages[imgIndex];
+    const typeLabel = asset ? (asset.type === 'image' ? '图' : asset.type === 'video' ? '视频' : '音频') : '图';
     const textBefore = promptInput.substring(0, cursorPos);
-    const replacement = `@[图${imgIndex + 1}] `; // 用 @[图X] 替代以实现清爽缩略图与避免重名冲突
+    const replacement = `@[${typeLabel}${imgIndex + 1}] `; // 用 @[图/视频/音频X] 替代以实现清爽缩略图与避免重名冲突
     const textAfter = promptInput.substring(cursorPos + mentionSearch.length + 1);
     const nextText = textBefore + replacement + textAfter;
     setPromptInput(nextText);
@@ -466,18 +525,40 @@ export function useImageNodeLogic({
 
   // 12. 图像生成逻辑
   const handleGenerateImage = async () => {
+    // 自动异步解析 db:// 引用为 Base64 真实数据
+    const resolveDbUrl = async (url: string): Promise<string> => {
+      if (typeof url === 'string' && url.startsWith('db://')) {
+        const mediaId = url.replace('db://', '');
+        const getMedia = (window as any).getMediaFromDB;
+        if (typeof getMedia === 'function') {
+          try {
+            const base64 = await getMedia(mediaId);
+            if (base64) return base64;
+          } catch (err) {
+            console.warn(`[useImageNodeLogic] Failed to resolve db://:`, err);
+          }
+        }
+      }
+      return url;
+    };
+
     let processedPrompt = currentPrompt;
     connectedImages.forEach((img, idx) => {
+      const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
+      const refLabel = img.type === 'image' ? '参考图' : img.type === 'video' ? '参考视频' : '参考音频';
       // 优先支持并替换新的 @[图X] 清爽标记格式
-      processedPrompt = processedPrompt.replace(new RegExp(`@\\[图${idx + 1}\\]`, 'g'), `[参考图${idx + 1}]`);
+      processedPrompt = processedPrompt.replace(new RegExp(`@\\[${label}${idx + 1}\\]`, 'g'), `[${refLabel}${idx + 1}]`);
       // 兼容可能存在的旧标签模式
-      processedPrompt = processedPrompt.replace(`[${img.nodeName}]`, `[参考图${idx + 1}]`);
+      processedPrompt = processedPrompt.replace(`[${img.nodeName}]`, `[${refLabel}${idx + 1}]`);
     });
 
     const batchSize = data.inputs?.batchSize || 1;
     setGenerating(true);
 
     try {
+      const resolvedRefImages = await Promise.all(refImages.map(item => resolveDbUrl(item.url)));
+      const resolvedFaceRef = resolvedRefImages[0] || '';
+
       for (let i = 0; i < batchSize; i++) {
         // 当生成多张时，给用户清晰的日志体验
         if (batchSize > 1) {
@@ -530,8 +611,7 @@ export function useImageNodeLogic({
             } 
             // 2. 智能图片输入，支持连卡槽多图顺次映射
             else if (isImage) {
-              const refImagesList = data.inputs?.refImages || [];
-              const targetImage = refImagesList[imageParamIndex] || currentFaceRef || '';
+              const targetImage = resolvedRefImages[imageParamIndex] || resolvedFaceRef || '';
               aixInputs[inputKey] = targetImage;
               imageParamIndex++;
             } 
@@ -575,8 +655,7 @@ export function useImageNodeLogic({
               }
               textParamIndex++;
             } else if (isImage) {
-              const refImagesList = data.inputs?.refImages || [];
-              mappedVal = refImagesList[imageParamIndex] || currentFaceRef || '';
+              mappedVal = resolvedRefImages[imageParamIndex] || resolvedFaceRef || '';
               imageParamIndex++;
             } else if (fieldLower === 'width' || fieldLower === 'w') {
               mappedVal = parseInt(size.split('x')[0]) || 1024;
@@ -662,8 +741,8 @@ export function useImageNodeLogic({
               model: model,
               prompt: processedPrompt,
               size: size,
-              faceRef: currentFaceRef,
-              refImages: refImages
+              faceRef: resolvedFaceRef,
+              refImages: resolvedRefImages
             })
           });
 

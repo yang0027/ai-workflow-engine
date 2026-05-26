@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/react';
+import { ResolvedMedia } from '../ResolvedMedia';
 
 interface GridSplitterNodeProps {
   id: string;
@@ -23,6 +24,11 @@ interface GridSplitterNodeProps {
 export default function GridSplitterNode({ id, data, selected }: GridSplitterNodeProps) {
   const { setNodes, deleteElements } = useReactFlow();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 多选检测：只有单选时才显示菜单
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
 
   // 扫描上游连线
   const edges = useStore((state) => state.edges);
@@ -124,6 +130,26 @@ export default function GridSplitterNode({ id, data, selected }: GridSplitterNod
     }
 
     setSplitting(true);
+
+    // 自动异步解析 db:// 引用为 Base64 真实数据以供 new Image() 加载
+    const resolveDbUrl = async (url: string): Promise<string> => {
+      if (typeof url === 'string' && url.startsWith('db://')) {
+        const mediaId = url.replace('db://', '');
+        const getMedia = (window as any).getMediaFromDB;
+        if (typeof getMedia === 'function') {
+          try {
+            const base64 = await getMedia(mediaId);
+            if (base64) return base64;
+          } catch (err) {
+            console.warn(`[GridSplitterNode] Failed to resolve db://:`, err);
+          }
+        }
+      }
+      return url;
+    };
+
+    const resolvedImage = await resolveDbUrl(currentImage);
+
     // 采用微小延迟以获得平滑的高端加载微动画效果
     setTimeout(() => {
       const img = new Image();
@@ -208,7 +234,7 @@ export default function GridSplitterNode({ id, data, selected }: GridSplitterNod
         alert('图片加载失败，请检查格式！');
         setSplitting(false);
       };
-      img.src = currentImage;
+      img.src = resolvedImage;
     }, 600);
   };
 
@@ -262,7 +288,7 @@ export default function GridSplitterNode({ id, data, selected }: GridSplitterNod
       }}
     >
       {/* 物理删除悬浮按钮 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <button
           onClick={handleDelete}
           style={{
@@ -354,13 +380,13 @@ export default function GridSplitterNode({ id, data, selected }: GridSplitterNod
                 onClick={(e) => { e.stopPropagation(); handleDownloadTile(tile, idx); }}
                 title="点击单独下载切片"
               >
-                <img src={tile} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <ResolvedMedia url={tile} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             ))}
           </div>
         ) : currentImage ? (
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <img src={currentImage} alt="Input source" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <ResolvedMedia url={currentImage} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
               <span style={{ fontSize: '11px', color: '#fff', fontWeight: 'bold' }}>图片已就绪</span>
               <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)' }}>双击节点开始配置切片</span>
@@ -432,7 +458,7 @@ export default function GridSplitterNode({ id, data, selected }: GridSplitterNod
       </Handle>
 
       {/* 选中态底部配置面板 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <div
           className="nodrag"
           style={{

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Handle, Position, useReactFlow, NodeResizer, useStore, useNodes } from '@xyflow/react';
+import { ResolvedMedia } from '../ResolvedMedia';
 
 interface PromptSourceNodeProps {
   id: string;
@@ -25,6 +26,11 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
   
   const edges = useStore((state) => state.edges);
   const nodes = useNodes();
+
+  // 多选检测：只有单选时才显示菜单
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
 
   const [generating, setGenerating] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -82,7 +88,26 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
       const outputs = (srcNode.data?.outputs || {}) as any;
       const inputs = (srcNode.data?.inputs || {}) as any;
       const val = outputs.output || outputs.image || inputs.fileUrl || '';
-      if (val && (val.startsWith('db://') || val.startsWith('data:image/') || val.includes('.png') || val.includes('.jpg') || val.includes('.jpeg') || val.includes('.webp') || srcNode.type === 'upload-node')) {
+      if (!val || typeof val !== 'string') return;
+      
+      const uploadFileType = inputs?.fileType || outputs?.fileType;
+      const isVideoOrAudio = 
+        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.ogg') || val.endsWith('.m4a') ||
+        val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') ||
+        val.startsWith('data:audio/') || val.startsWith('data:video/') ||
+        (val.includes('media-asset-') && (val.includes('audio') || val.includes('video'))) ||
+        srcNode.type === 'tts-service' ||
+        (srcNode.type === 'upload-node' && (uploadFileType === 'audio' || uploadFileType === 'video'));
+
+      if (isVideoOrAudio) return;
+
+      const isImage = 
+        val.startsWith('data:image/') ||
+        val.endsWith('.png') || val.endsWith('.jpg') || val.endsWith('.jpeg') || val.endsWith('.webp') ||
+        srcNode.type === 'image-service' ||
+        (srcNode.type === 'upload-node' && (uploadFileType === 'image' || !uploadFileType || val.startsWith('db://')));
+
+      if (isImage) {
         imgs.push(val);
       }
     });
@@ -638,7 +663,8 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
                 placeholder="在此编写剧本描述，或者通过下方按钮优化与反推提示词..."
                 style={{
                   width: '100%',
-                  height: '130px',
+                  height: '200px',
+                  minHeight: '120px',
                   background: 'rgba(0,0,0,0.3)',
                   border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '8px',
@@ -693,7 +719,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
 
 
       {/* 选中态底部悬浮配置面板 - 580px 玻璃拟态控制面板 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <div
           className="nodrag"
           style={{
@@ -1104,7 +1130,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
                 {connectedImage ? (
                   <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '100px', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <img src={resolveMediaUrl(connectedImage)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <ResolvedMedia url={connectedImage} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(168, 85, 247, 0.9)', color: '#fff', fontSize: '8.5px', textAlign: 'center', padding: '2px 0', fontWeight: 'bold' }}>
                       已成功关联参考图
                     </div>

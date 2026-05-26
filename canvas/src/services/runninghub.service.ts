@@ -1,6 +1,26 @@
+import { ComfyUIService } from './comfyui.service';
 import { RunningHubWorkflow } from '../config/runninghub.config';
+import { PRESET_WORKFLOWS } from '../presets/workflows';
 
 const GATEWAY_URL = 'http://localhost:3000';
+
+export interface ComfyUIWorkflow {
+  id: string;
+  name: string;
+  source: 'local_comfyui' | 'runninghub';
+  filename?: string;
+  workflowIdOrJson?: string;
+  description: string;
+  fields?: Array<{
+    id: string;
+    nodeId: string;
+    fieldName: string;
+    name: string;
+    type: string;
+    default: any;
+  }>;
+  capability: string;
+}
 
 export class RunningHubService {
   /**
@@ -10,43 +30,17 @@ export class RunningHubService {
     const saved = localStorage.getItem('custom_runninghub_workflows');
     const custom = saved ? JSON.parse(saved) : [];
     
-    // 默认自带的工作流
-    const defaults: RunningHubWorkflow[] = [
-      {
-        id: '2034899011521482754',
-        name: '🎨 RunningHub 极简文生图 (Flux)',
-        appId: '2034899011521482754',
-        description: '极速且纯粹的云端文生图工作流，支持画面尺寸的自适应微调。',
-        nodeInfoList: [
-          { nodeId: '33', fieldName: 'text', fieldValue: '', description: '提示词' },
-          { nodeId: '21', fieldName: 'width', fieldValue: '1024', description: '宽度' },
-          { nodeId: '21', fieldName: 'height', fieldValue: '1024', description: '高度' }
-        ],
-        capability: 'image'
-      },
-      {
-        id: 'rh_wf_face_consistency',
-        name: '🎭 RunningHub 面部一致性洗图',
-        appId: '2053799323917402114',
-        description: '智能提取 Flux 面部原画特征，并在云端进行高精面部重采样。',
-        nodeInfoList: [
-          { nodeId: '5148', fieldName: 'text', fieldValue: '', description: '提示词' },
-          { nodeId: '10', fieldName: 'image', fieldValue: '', description: '参考图' }
-        ],
-        capability: 'image'
-      },
-      {
-        id: 'rh_wf_style_transfer',
-        name: '🎨 RunningHub 艺术流派跨界重绘',
-        appId: '2053799323917402115',
-        description: '一键将常规图片洗成赛博朋克、日系动漫或中国古典水墨风。',
-        nodeInfoList: [
-          { nodeId: '6', fieldName: 'image', fieldValue: '', description: '原图' },
-          { nodeId: '12', fieldName: 'style', fieldValue: 'cyberpunk', description: '风格' }
-        ],
-        capability: 'image'
-      }
-    ];
+    // 默认自带的工作流，动态从独立的预设文件模块中读取
+    const defaults: RunningHubWorkflow[] = PRESET_WORKFLOWS
+      .filter(w => w.source === 'runninghub' && w.nodeInfoList)
+      .map(w => ({
+        id: w.id,
+        name: w.name,
+        appId: w.appId || w.id,
+        description: w.description,
+        nodeInfoList: w.nodeInfoList || [],
+        capability: w.capability
+      }));
 
     // 过滤掉被用户删除的内置默认工作流
     const deletedSaved = localStorage.getItem('deleted_default_workflows');

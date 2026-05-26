@@ -33,6 +33,7 @@ import VideoFusionNode from './components/nodes/VideoFusionNode';
 import PurpleGroupNode from './components/nodes/PurpleGroupNode';
 import UploadNode from './components/nodes/UploadNode';
 import GridSplitterNode from './components/nodes/GridSplitterNode';
+import { PRESET_WORKFLOWS } from './presets/workflows';
 import LoopNode from './components/nodes/LoopNode';
 import ImageEditorModal from './components/ImageEditorModal';
 import { RunningHubService } from './services/runninghub.service';
@@ -553,18 +554,10 @@ function WorkflowCanvas() {
       else if (srcNode.type === 'prompt-source') sourceHandle = 'output';
 
       if (targetType === 'image-service') {
-        if (srcNode.type === 'upload-node' || srcNode.type === 'image-service') {
-          targetHandle = 'faceRef';
-        } else {
-          targetHandle = 'input';
-        }
+        targetHandle = 'input';
       }
       else if (targetType === 'video-fusion') {
-        if (srcNode.type === 'tts-service') {
-          targetHandle = 'audio';
-        } else {
-          targetHandle = 'imageRef';
-        }
+        targetHandle = 'input';
       }
       else {
         targetHandle = 'input';
@@ -593,18 +586,10 @@ function WorkflowCanvas() {
       else if (targetType === 'prompt-source') sourceHandle = 'output';
 
       if (srcNode.type === 'image-service') {
-        if (targetType === 'upload-node') {
-          targetHandle = 'faceRef';
-        } else {
-          targetHandle = 'input';
-        }
+        targetHandle = 'input';
       }
       else if (srcNode.type === 'video-fusion') {
-        if (targetType === 'tts-service') {
-          targetHandle = 'audio';
-        } else {
-          targetHandle = 'imageRef';
-        }
+        targetHandle = 'input';
       }
       else {
         targetHandle = 'input';
@@ -899,7 +884,7 @@ function WorkflowCanvas() {
   };
 
   // 大 Modal 专属局部状态与音频试听引擎二开
-  const [templateLargeTab, setTemplateLargeTab] = useState<'image' | 'video' | 'local_comfyui' | 'runninghub'>('image');
+  const [templateLargeTab, setTemplateLargeTab] = useState<'image' | 'video' | 'audio' | 'local_comfyui' | 'runninghub'>('image');
   const [savedTemplates, setSavedTemplates] = useState<WorkflowTemplate[]>([]);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
@@ -1105,6 +1090,39 @@ function WorkflowCanvas() {
   React.useEffect(() => {
     localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(historyAssets));
   }, [historyAssets]);
+
+  // 预设素材库（用户上传的）
+  const [libraryAssets, setLibraryAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; name: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('toonflow_library_assets');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  React.useEffect(() => {
+    localStorage.setItem('toonflow_library_assets', JSON.stringify(libraryAssets));
+  }, [libraryAssets]);
+
+  // 虚拟人库
+  const [virtualAssets, setVirtualAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; name: string; avatar?: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('toonflow_virtual_assets');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  React.useEffect(() => {
+    localStorage.setItem('toonflow_virtual_assets', JSON.stringify(virtualAssets));
+  }, [virtualAssets]);
+
+  // LORA 其他预设
+  const [loraAssets, setLoraAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; name: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('toonflow_lora_assets');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  React.useEffect(() => {
+    localStorage.setItem('toonflow_lora_assets', JSON.stringify(loraAssets));
+  }, [loraAssets]);
 
   // 新增二开交互状态
   const [paneContextMenuPos, setPaneContextMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -1440,11 +1458,11 @@ function WorkflowCanvas() {
         if (type === 'audio') {
           setAssetLargeTab('virtual'); // 智能派生克隆声线
         } else {
-          setAssetLargeTab('library'); // 智能派生预置素材
+          setAssetLargeTab('mine'); // 资产库选入直接显示“我的资产”TAB界面
         }
       }
       if (targetTab === 'templates' && type) {
-        if (type === 'video' || type === 'image' || type === 'custom') {
+        if (type === 'video' || type === 'image' || type === 'audio' || type === 'custom') {
           setTemplateLargeTab(type as any);
         }
       }
@@ -1472,8 +1490,6 @@ function WorkflowCanvas() {
               ? 'video' 
               : 'image';
         
-        console.log("File loaded successfully. Saving to IndexedDB.");
-        
         const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const saveMedia = (window as any).saveMediaToDB;
         let finalUrl = reader.result;
@@ -1490,59 +1506,23 @@ function WorkflowCanvas() {
           tag: '全部'
         };
         
-        setUploadedAssets(prev => [newAsset, ...prev]);
-
-        // 直接根据当前视口中心，在画布上自动派生一个 'upload-node' 节点
-        const id = `upload-node-${Date.now()}`;
-        let viewportCenter = { x: 300, y: 300 };
-        try {
-          if (typeof screenToFlowPosition === 'function') {
-            viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-            console.log("Resolved viewport center via screenToFlowPosition:", viewportCenter);
-          } else {
-            console.warn("screenToFlowPosition is not available as a function, using fallback.");
-          }
-        } catch (err) {
-          console.error("Error invoking screenToFlowPosition, using fallback coordinates:", err);
+        // 根据当前 tab 保存到对应的库
+        switch (assetLargeTab) {
+          case 'mine':
+            setUploadedAssets(prev => [newAsset, ...prev]);
+            // 只有「我的资产」上传后自动创建节点
+            createUploadNode(file.name, fileType, finalUrl);
+            break;
+          case 'library':
+            setLibraryAssets(prev => [...prev, { id: `lib-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            break;
+          case 'virtual':
+            setVirtualAssets(prev => [...prev, { id: `virt-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            break;
+          case 'other':
+            setLoraAssets(prev => [...prev, { id: `lora-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            break;
         }
-
-        // 进行防重叠坐标修正计算
-        const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-
-        const newNode = {
-          id,
-          type: 'upload-node',
-          position: safePos,
-          width: 300,
-          height: 260,
-          data: {
-            label: `📦 上传资源: ${file.name}`,
-            progress: 100,
-            inputs: {
-              fileType,
-              fileUrl: finalUrl,
-              fileName: file.name,
-            },
-            outputs: {
-              output: finalUrl,
-              fileType,
-            },
-            isNew: true // 闪烁发光
-          }
-        };
-
-        console.log("Spawning new upload-node:", newNode);
-        setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-
-        setTimeout(() => {
-          setNodes((nds) => nds.map(n => n.id === id ? {
-            ...n,
-            data: {
-              ...n.data,
-              isNew: false
-            }
-          } : n));
-        }, 3000);
       }
     };
     reader.onerror = (err) => {
@@ -1551,13 +1531,45 @@ function WorkflowCanvas() {
     reader.readAsDataURL(file);
   };
 
+  // 创建 upload 节点的辅助函数（仅「我的资产」使用）
+  const createUploadNode = (fileName: string, fileType: string, fileUrl: string) => {
+    const id = `upload-node-${Date.now()}`;
+    let viewportCenter = { x: 300, y: 300 };
+    try {
+      if (typeof screenToFlowPosition === 'function') {
+        viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      }
+    } catch {}
+
+    const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+    const newNode = {
+      id,
+      type: 'upload-node',
+      position: safePos,
+      width: 300,
+      height: 260,
+      data: {
+        label: `📦 上传资源: ${fileName}`,
+        progress: 100,
+        inputs: { fileType, fileUrl, fileName },
+        outputs: { output: fileUrl, fileType },
+        isNew: true
+      }
+    };
+
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+
+    setTimeout(() => {
+      setNodes((nds) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, isNew: false } } : n));
+    }, 3000);
+  };
+
   // pane and node right-click events
   const onPaneContextMenu = useCallback(
     (event: any) => {
       event.preventDefault();
       setNodeContextMenu(null);
       setPaneContextMenuPos({ x: event.clientX, y: event.clientY });
-      setActiveFloatingPopup('add');
     },
     []
   );
@@ -3255,17 +3267,9 @@ function WorkflowCanvas() {
       
       // 智能匹配新节点的输入端
       if (targetType === 'image-service') {
-        if (srcNode.type === 'upload-node' || srcNode.type === 'image-service') {
-          targetHandle = 'faceRef';
-        } else {
-          targetHandle = 'input';
-        }
+        targetHandle = 'input';
       } else if (targetType === 'video-fusion') {
-        if (srcNode.type === 'tts-service') {
-          targetHandle = 'audio';
-        } else {
-          targetHandle = 'imageRef';
-        }
+        targetHandle = 'input';
       } else {
         targetHandle = 'input';
       }
@@ -4772,6 +4776,16 @@ function WorkflowCanvas() {
 
         // 3. 预设素材库一键添加到画布与防重叠派生 Upload 节点
         const handleInjectLibraryAsset = (url: string, name: string) => {
+          // 智能提取资产的多媒体类型
+          let fileType: 'image' | 'video' | 'audio' = 'image';
+          const lowerUrl = url.toLowerCase();
+          const lowerName = name.toLowerCase();
+          if (lowerUrl.endsWith('.mp3') || lowerUrl.endsWith('.wav') || lowerName.includes('🎙️') || lowerName.includes('音频') || lowerName.includes('mp3') || lowerName.includes('wav')) {
+            fileType = 'audio';
+          } else if (lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.webm') || lowerName.includes('🎬') || lowerName.includes('视频') || lowerName.includes('mp4') || lowerName.includes('webm')) {
+            fileType = 'video';
+          }
+
           if (modalNodeTarget) {
             setNodes(nds => nds.map(n => {
               if (n.id === modalNodeTarget) {
@@ -4801,13 +4815,14 @@ function WorkflowCanvas() {
             }));
             
             spawnLinkedNode(modalNodeTarget, 'upload-node', 'left', {
-              fileType: 'image',
+              fileType,
               fileUrl: url,
               fileName: name.replace(/[🖼️🎙️🎬📦]/g, '').trim()
             });
 
             closeLargeModal();
-            alert(`🎉 成功将素材【${name}】添加到当前节点，并在其左侧派生了直连 [🖼️ 图像资产输入] 节点！`);
+            const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
+            alert(`🎉 成功将素材【${name}】添加到当前节点，并在其左侧派生了直连 [${typeLabel} 资产输入] 节点！`);
             return;
           }
 
@@ -4819,6 +4834,10 @@ function WorkflowCanvas() {
             }
           } catch (err) {}
           const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+          const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
+          const ext = fileType === 'video' ? 'mp4' : (fileType === 'audio' ? 'mp3' : 'jpg');
+          const cleanName = name.replace(/[🖼️🎙️🎬📦]/g, '').trim();
+
           const newNode = {
             id,
             type: 'upload-node',
@@ -4826,16 +4845,16 @@ function WorkflowCanvas() {
             width: 300,
             height: 260,
             data: {
-              label: name,
+              label: `${typeLabel} 资产输入`,
               progress: 100,
               inputs: {
-                fileType: 'image',
+                fileType,
                 fileUrl: url,
-                fileName: `${name.replace('🖼️ ', '')}.jpg`
+                fileName: `${cleanName}.${ext}`
               },
               outputs: {
                 output: url,
-                fileType: 'image'
+                fileType
               }
             }
           };
@@ -5161,6 +5180,7 @@ function WorkflowCanvas() {
                       [
                         { id: 'image', label: '🎨 图像工作流' },
                         { id: 'video', label: '📹 视频工作流' },
+                        { id: 'audio', label: '🗣️ 音频工作流' },
                         { id: 'local_comfyui', label: '💻 本地 ComfyUI' },
                         { id: 'runninghub', label: '⚡ RunningHub工作流' },
                       ].map((t) => (
@@ -5300,43 +5320,19 @@ function WorkflowCanvas() {
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {[
-                            {
-                              id: 'face-consistency',
-                              title: 'Face Consistency 面部一致性',
-                              desc: '锁定角色五官比例与面部特征，使其在多个分镜中实现高一致性。',
-                              cover: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&q=80',
-                              tag: '🔥 推荐',
-                              color: '#a855f7',
-                              boundId: 'rh_wf_face_consistency'
-                            },
-                            {
-                              id: 'style-transfer',
-                              title: 'Artistic Style Transfer 艺术流派重绘',
-                              desc: '在水墨、赛博朋克与未来主义之间进行大融合重绘。',
-                              cover: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=400&q=80',
-                              tag: '🖌️ 风格',
-                              color: '#10b981',
-                              boundId: 'rh_wf_style_transfer'
-                            },
-                            {
-                              id: 'minimalist-gen',
-                              title: 'Minimalistic Image Gen 极简生图模板',
-                              desc: '专为极简主义生图研发，少数提示词即可出具强视觉冲击插画。',
-                              cover: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80',
-                              tag: '✨ 热门',
-                              color: '#f59e0b',
-                              boundId: '2034899011521482754'
-                            },
-                            {
-                              id: 'ip-persona',
-                              title: 'IP Persona Creation 品牌IP形象创建',
-                              desc: '支持快速派生机甲、萌趣、虚拟偶像等一致性三视图。',
-                              cover: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&q=80',
-                              tag: '🎨 创意',
-                              color: '#ec4899',
-                            },
-                          ].filter(t => !t.boundId || activeWorkflowIds.includes(t.boundId)).map((tmpl) => (
+                          {PRESET_WORKFLOWS
+                            .filter(w => w.capability === 'image' && w.source === 'runninghub')
+                            .map(w => ({
+                              id: w.id,
+                              title: w.name,
+                              desc: w.description,
+                              cover: w.cover || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80',
+                              tag: w.tag || '✨ 推荐',
+                              color: w.color || '#a855f7',
+                              boundId: w.id
+                            }))
+                            .filter(t => !t.boundId || activeWorkflowIds.includes(t.boundId))
+                            .map((tmpl) => (
                             <div
                               key={tmpl.id}
                               style={{
@@ -5398,8 +5394,86 @@ function WorkflowCanvas() {
                             </div>
                           ))}
                         </div>
+
+                        {/* 动态追加用户自定义的本地 ComfyUI / RunningHub 图像模板 */}
+                        {savedTemplates.filter(t => !t.capability || t.capability === 'image').length > 0 && (
+                          <div style={{ marginTop: '30px' }}>
+                            <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span>🔌</span> 您的自定义/本地 ComfyUI 图像工作流 ({savedTemplates.filter(t => !t.capability || t.capability === 'image').length})
+                            </h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
+                              {savedTemplates.filter(t => !t.capability || t.capability === 'image').map((tmpl) => (
+                                <div
+                                  key={tmpl.id}
+                                  style={{
+                                    borderRadius: '14px',
+                                    overflow: 'hidden',
+                                    border: '1px solid rgba(255,255,255,0.06)',
+                                    background: 'rgba(0,0,0,0.2)',
+                                    padding: '10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                                    transition: 'all 0.25s',
+                                  }}
+                                >
+                                  <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
+                                    <img 
+                                      src={tmpl.previewImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'} 
+                                      alt={tmpl.name} 
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                    />
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        top: '6px',
+                                        left: '6px',
+                                        background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
+                                        color: '#fff',
+                                        padding: '2px 6px',
+                                        borderRadius: '6px',
+                                        fontSize: '9px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
+                                    <div>
+                                      <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
+                                      <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
+                                        {tmpl.description || '自定义解析的本地工作流模板...'}
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
+                                      style={{
+                                        marginTop: '6px',
+                                        padding: '6px',
+                                        borderRadius: '6px',
+                                        background: 'rgba(14, 165, 233, 0.2)',
+                                        border: '1px solid rgba(14, 165, 233, 0.4)',
+                                        color: '#fff',
+                                        fontSize: '10px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.45)')}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.2)')}
+                                    >
+                                      {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      )}
+                    )}
 
                       {/* Video Workflow Templates Tab */}
                       {templateLargeTab === 'video' && (
@@ -5448,40 +5522,17 @@ function WorkflowCanvas() {
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {[
-                            {
-                              id: 'script-storyboard',
-                              title: 'Script Storyboard 剧本多分镜视频合成',
-                              desc: '全自动剧本拆解与多级视频合成，完美融合文本旁白、镜头画面与音轨融合。',
-                              cover: 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80',
-                              tag: '🎬 电商',
-                              color: '#a855f7',
-                            },
-                            {
-                              id: 'vr-360-pano',
-                              title: 'VR360° Panoramic 全景 4K 引擎',
-                              desc: '智能将 2D 参考图拉伸并重塑为 360° 无缝物理全景球幕视频，极佳的沉浸式场景。',
-                              cover: 'https://images.unsplash.com/photo-1617802690992-15d93263d3a9?w=400&q=80',
-                              tag: '🌐 沉浸',
-                              color: '#06b6d4',
-                            },
-                            {
-                              id: 'seedance-滿血',
-                              title: 'Seedance 2.0 物理骨骼舞蹈视频重绘',
-                              desc: '将预置音画与人物动态完美同步，重构光影并产出流畅、无抖动且一致性完美的视频。',
-                              cover: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&q=80',
-                              tag: '🔥 狂热',
-                              color: '#f97316',
-                            },
-                            {
-                              id: 'amazon-brand-a',
-                              title: 'Amazon Brand A+ 品牌电商卡片视频',
-                              desc: '将产品主图与卖点词一键组合，灌注高档动态场景与专业商用质感合成特效。',
-                              cover: 'https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?w=400&q=80',
-                              tag: '🛒 经典',
-                              color: '#eab308',
-                            },
-                          ].map((tmpl) => (
+                          {PRESET_WORKFLOWS
+                            .filter(w => w.capability === 'video' && w.source === 'runninghub')
+                            .map(w => ({
+                              id: w.id,
+                              title: w.name,
+                              desc: w.description,
+                              cover: w.cover || 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80',
+                              tag: w.tag || '🎬 电商',
+                              color: w.color || '#a855f7'
+                            }))
+                            .map((tmpl) => (
                             <div
                               key={tmpl.id}
                               style={{
@@ -5543,7 +5594,213 @@ function WorkflowCanvas() {
                             </div>
                           ))}
                         </div>
+
+                        {/* 动态追加用户自定义的本地 ComfyUI / RunningHub 视频模板 */}
+                        {savedTemplates.filter(t => t.capability === 'video').length > 0 && (
+                          <div style={{ marginTop: '30px' }}>
+                            <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span>🔌</span> 您的自定义/本地 ComfyUI 视频工作流 ({savedTemplates.filter(t => t.capability === 'video').length})
+                            </h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
+                              {savedTemplates.filter(t => t.capability === 'video').map((tmpl) => (
+                                <div
+                                  key={tmpl.id}
+                                  style={{
+                                    borderRadius: '14px',
+                                    overflow: 'hidden',
+                                    border: '1px solid rgba(255,255,255,0.06)',
+                                    background: 'rgba(0,0,0,0.2)',
+                                    padding: '10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                                    transition: 'all 0.25s',
+                                  }}
+                                >
+                                  <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
+                                    <img 
+                                      src={tmpl.previewImage || 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80'} 
+                                      alt={tmpl.name} 
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                    />
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        top: '6px',
+                                        left: '6px',
+                                        background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
+                                        color: '#fff',
+                                        padding: '2px 6px',
+                                        borderRadius: '6px',
+                                        fontSize: '9px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
+                                    <div>
+                                      <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
+                                      <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
+                                        {tmpl.description || '自定义视频合成工作流模板...'}
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
+                                      style={{
+                                        marginTop: '6px',
+                                        padding: '6px',
+                                        borderRadius: '6px',
+                                        background: 'rgba(14, 165, 233, 0.2)',
+                                        border: '1px solid rgba(14, 165, 233, 0.4)',
+                                        color: '#fff',
+                                        fontSize: '10px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.45)')}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.2)')}
+                                    >
+                                      {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    )}
+
+                      {/* Audio Workflow Templates Tab */}
+                      {templateLargeTab === 'audio' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          {/* 引导跳转卡片 (前往 AI应用（工作流）) */}
+                          <div
+                            onClick={() => {
+                              setSettingsActiveTab('templates');
+                              setIsSettingsOpen(true);
+                            }}
+                            style={{
+                              padding: '16px 24px',
+                              border: '1px solid rgba(16, 185, 129, 0.25)',
+                              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
+                              borderRadius: '16px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              cursor: 'pointer',
+                              gap: '16px',
+                              boxShadow: '0 8px 32px rgba(16, 185, 129, 0.05)',
+                              transition: 'all 0.3s ease',
+                              marginBottom: '20px'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(16, 185, 129, 0.12)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(16, 185, 129, 0.05)';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
+                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.5))' }}>🗣️</span>
+                              <div style={{ textAlign: 'left' }}>
+                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
+                                  前往「配置工作流参数」管理中心
+                                </h3>
+                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
+                                  在此上传您的 ComfyUI JSON 或 RunningHub 资产，深度定制音频克隆暴露参数、别名及多图映射。
+                                </p>
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '12px', color: '#34d399', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
+                          </div>
+
+                          {/* 自定义 ComfyUI 音频工作流列表 */}
+                          <div>
+                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📋</span> 已保存的音频工作流 ({savedTemplates.filter(t => t.capability === 'audio').length})
+                            </h4>
+                            {templatesLoading ? (
+                              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>🔄 正在读取模板...</div>
+                            ) : savedTemplates.filter(t => t.capability === 'audio').length === 0 ? (
+                              <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.3)', fontSize: '11px', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '10px' }}>
+                                📭 暂无已保存的声音克隆工作流，请在右上角「⚙️ 全局设置」➔「自定义工作流」中导入 ComfyUI JSON 进行解析保存。
+                              </div>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
+                                {savedTemplates.filter(t => t.capability === 'audio').map((tmpl) => (
+                                  <div
+                                    key={tmpl.id}
+                                    style={{
+                                      borderRadius: '14px',
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(255,255,255,0.06)',
+                                      background: 'rgba(0,0,0,0.2)',
+                                      padding: '10px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '8px',
+                                      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                                      transition: 'all 0.25s',
+                                    }}
+                                  >
+                                    <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
+                                      <img src={tmpl.previewImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'} alt={tmpl.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      <span
+                                        style={{
+                                          position: 'absolute',
+                                          top: '6px',
+                                          left: '6px',
+                                          background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
+                                          color: '#fff',
+                                          padding: '2px 6px',
+                                          borderRadius: '6px',
+                                          fontSize: '9px',
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
+                                      <div>
+                                        <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
+                                        <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
+                                          {tmpl.description || '自定义声音克隆工作流模板...'}
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
+                                        style={{
+                                          marginTop: '6px',
+                                          padding: '6px',
+                                          borderRadius: '6px',
+                                          background: 'rgba(16, 185, 129, 0.2)',
+                                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                                          color: '#fff',
+                                          fontSize: '10px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s',
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.45)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)')}
+                                      >
+                                        {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
 
                       {/* Local ComfyUI Workflows Tab */}
@@ -6050,17 +6307,22 @@ function WorkflowCanvas() {
                       {assetLargeTab === 'library' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
                           {[
-                            { name: '🖼️ 赛博飞空城堡', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', tag: '场景' },
-                            { name: '🖼️ 蒸汽朋克少女', url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f', tag: '人物' },
-                            { name: '🖼️ 晶体魔法森林', url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab', tag: '场景' },
-                            { name: '🖼️ 机械反重力城郭', url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119', tag: '场景' },
-                            { name: '🖼️ 极简化三维抽象', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853', tag: '风格' },
-                            { name: '🖼️ VR全景太空站', url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa', tag: '全景' },
-                            { name: '🖼️ 古风山水殿堂', url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf', tag: '场景' },
-                            { name: '🖼️ 霓虹都市雨景', url: 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', tag: '场景' },
-                          ].map((asset, idx) => (
+                            // 用户上传的图片（最新在前）
+                            ...libraryAssets.map(a => ({ ...a, tag: '用户上传', isPreset: false })),
+                            // 预设图片
+                            { id: 'preset-1', name: '🖼️ 赛博飞空城堡', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', tag: '场景', isPreset: true },
+                            { id: 'preset-2', name: '🖼️ 蒸汽朋克少女', url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f', tag: '人物', isPreset: true },
+                            { id: 'preset-3', name: '🖼️ 晶体魔法森林', url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab', tag: '场景', isPreset: true },
+                            { id: 'preset-4', name: '🖼️ 机械反重力城郭', url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119', tag: '场景', isPreset: true },
+                            { id: 'preset-5', name: '🖼️ 极简化三维抽象', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853', tag: '风格', isPreset: true },
+                            { id: 'preset-6', name: '🖼️ VR全景太空站', url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa', tag: '全景', isPreset: true },
+                            { id: 'preset-7', name: '🖼️ 古风山水殿堂', url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf', tag: '场景', isPreset: true },
+                            { id: 'preset-8', name: '🖼️ 霓虹都市雨景', url: 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', tag: '场景', isPreset: true },
+                          ].map((a: any) => {
+                            const asset = { type: 'image', ...a } as any;
+                            return (
                             <div
-                              key={idx}
+                              key={asset.id}
                               style={{
                                 borderRadius: '14px',
                                 overflow: 'hidden',
@@ -6073,7 +6335,7 @@ function WorkflowCanvas() {
                               }}
                             >
                               <div
-                                onClick={() => setFullScreenMedia({ url: asset.url, type: 'image' })}
+                                onClick={() => setFullScreenMedia({ url: asset.url, type: asset.type || 'image' })}
                                 style={{
                                   width: '100%',
                                   aspectRatio: '16 / 9',
@@ -6087,8 +6349,42 @@ function WorkflowCanvas() {
                                   cursor: 'zoom-in',
                                 }}
                               >
-                                <ResolvedMedia url={asset.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {/* 支持图片、视频、音频 */}
+                                {(asset.type === 'image' || !asset.type) && <ResolvedMedia url={asset.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                {asset.type === 'video' && <ResolvedMedia url={asset.url} type="video" style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />}
+                                {asset.type === 'audio' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '32px' }}>🎵</span>
+                                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>音色/配音</span>
+                                  </div>
+                                )}
                                 <span style={{ position: 'absolute', top: '6px', right: '6px', width: '18px', height: '18px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>🔍</span>
+                                {/* 删除按钮 - 仅用户上传的显示 */}
+                                {!asset.isPreset && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm('确定删除此图片吗？')) {
+                                        setLibraryAssets(prev => prev.filter(a => a.id !== asset.id));
+                                      }
+                                    }}
+                                    style={{
+                                      position: 'absolute',
+                                      top: '6px',
+                                      left: '6px',
+                                      width: '18px',
+                                      height: '18px',
+                                      borderRadius: '50%',
+                                      background: 'rgba(239, 68, 68, 0.85)',
+                                      border: 'none',
+                                      color: '#fff',
+                                      fontSize: '10px',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                )}
                               </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '110px' }} title={asset.name}>
@@ -6141,7 +6437,8 @@ function WorkflowCanvas() {
                                 </button>
                               </div>
                             </div>
-                          ))}
+                          );
+                          })}
                         </div>
                       )}
 
@@ -7005,6 +7302,90 @@ function WorkflowCanvas() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = item.danger ? 'rgba(239, 68, 68, 0.15)' : 'rgba(168, 85, 247, 0.15)';
+                e.currentTarget.style.transform = 'translateX(4px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 空白处右键菜单 (Pane Context Menu Overlay) */}
+      {paneContextMenuPos && (
+        <div 
+          className="glass-panel nodrag"
+          style={{
+            position: 'fixed',             // 用 fixed 不随画布滚动
+            top: paneContextMenuPos.y,
+            left: paneContextMenuPos.x,
+            zIndex: 10000,
+            borderRadius: '12px',
+            background: 'rgba(11, 15, 25, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 15px rgba(168, 85, 247, 0.25)',
+            padding: '6px',
+            width: '160px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            animation: 'fadeIn 0.15s ease-out'
+          }}
+        >
+          {/* Backdrop layer to close on clicking outside */}
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              zIndex: -1,
+              background: 'transparent'
+            }}
+            onClick={() => setPaneContextMenuPos(null)}
+          />
+
+          {[
+            { type: 'upload-node', label: '📦 本地上传' },
+            { type: 'prompt-source', label: '📖 文本素材' },
+            { type: 'image-service', label: '🎨 智能生图' },
+            { type: 'tts-service', label: '🗣️ 声音克隆' },
+            { type: 'video-fusion', label: '📹 视频生成' },
+            { type: 'loop-node', label: '🔄 循环迭代' },
+            { type: 'grid-splitter', label: '⊞ 智能切片' },
+            { type: 'llm-service', label: '🧠 剧本专家' }
+          ].map((item) => (
+            <button
+              key={item.type}
+              onClick={() => {
+                let initialData = {};
+                if (item.type === 'upload-node') {
+                  initialData = { fileType: 'image', fileUrl: '', fileName: '' };
+                }
+                handleAddAgentNode(item.type as any, initialData);
+                setPaneContextMenuPos(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'transparent',
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 500,
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)';
                 e.currentTarget.style.transform = 'translateX(4px)';
               }}
               onMouseLeave={(e) => {

@@ -28,6 +28,11 @@ export default function LoopNode({ id, data, selected }: LoopNodeProps) {
   const nodes = useNodes();
   const edges = useStore((state) => state.edges);
 
+  // 多选检测：只有单选时才显示菜单
+  const isMultiSelected = useStore((state) => {
+    return state.nodes.filter(n => n.selected).length > 1;
+  });
+
   // 1. 扫描上游连线，看是否有 LLM 节点或者文本节点连入
   const connectedInput = useMemo(() => {
     const edge = edges.find(e => e.target === id && e.targetHandle === 'input');
@@ -183,7 +188,7 @@ export default function LoopNode({ id, data, selected }: LoopNodeProps) {
       }}
     >
       {/* 物理删除悬浮按钮 */}
-      {selected && (
+      {selected && !isMultiSelected && (
         <button
           onClick={() => {
             setNodes((nds) => nds.filter((n) => n.id !== id));

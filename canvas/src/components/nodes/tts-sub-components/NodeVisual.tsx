@@ -1,4 +1,5 @@
 import React from 'react';
+import { ResolvedMedia } from '../../ResolvedMedia';
 
 export interface NodeVisualProps {
   id: string;
@@ -139,9 +140,10 @@ export const NodeVisual: React.FC<NodeVisualProps> = ({
             <span className="wave-bar-element" style={{ animationDelay: '0.4s', height: '16px' }} />
           </div>
           <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>音色配音已就绪</span>
-          <audio 
-            ref={audioPreviewRef as any}
-            src={showAud} 
+          <ResolvedMedia 
+            videoRef={audioPreviewRef}
+            url={showAud} 
+            type="audio"
             style={{ display: 'none' }}
             onEnded={() => setIsPlaying(false)}
           />
