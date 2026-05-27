@@ -1028,7 +1028,15 @@ export default function ToonflowCenterModal({
               </div>
             )}
 
-            {/* ---------------- 2. LUXURY ASSETS CORE VIEW ---------------- */}
+            {/* ---------------- 2. SELF CREATED WORKFLOWS CORE VIEW ---------------- */}
+            {activeFloatingPopup === 'self_created' && (
+              <SelfCreatedTab
+                onSpawnSelfTemplate={onSpawnSelfTemplate}
+                onClose={onClose}
+              />
+            )}
+
+            {/* ---------------- 3. LUXURY ASSETS CORE VIEW ---------------- */}
             {activeFloatingPopup === 'assets' && (
               <>
                 {/* 资源一键拖拽上传头部 */}
