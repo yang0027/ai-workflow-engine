@@ -361,7 +361,7 @@ export default function GridNode({ id, data, selected }: GridNodeProps) {
 
   return (
     <div 
-      className="relative text-left" 
+      className="relative text-left custom-drag-handle" 
       style={{
         position: 'relative',
         width: '200px',

@@ -43,6 +43,8 @@ import LoopNode from './components/nodes/LoopNode';
 import ImageEditorModal from './components/ImageEditorModal';
 import { RunningHubService } from './services/runninghub.service';
 import { ResolvedMedia } from './components/ResolvedMedia';
+import { FloatingActionMenu } from './components/FloatingActionMenu';
+import { SelfTemplateService } from './services/self-template.service';
 
 
 // 自定义带删除按钮的 Edge 组件
@@ -536,6 +538,7 @@ function WorkflowCanvas() {
       position: safePos,
       parentId,
       extent: parentId ? 'parent' as const : undefined,
+      dragHandle: '.custom-drag-handle',
       data: {
         label,
         inputs: dataInputs,
@@ -677,7 +680,7 @@ function WorkflowCanvas() {
   const [isParsingScript, setIsParsingScript] = useState(false);
 
   // AixCanvas 二开专属状态
-  const [activeFloatingPopup, setActiveFloatingPopup] = useState<'add' | 'templates' | 'script' | 'scene' | 'assets' | 'history' | 'logs' | null>(null);
+  const [activeFloatingPopup, setActiveFloatingPopup] = useState<'add' | 'templates' | 'script' | 'scene' | 'assets' | 'history' | 'logs' | 'self-created' | null>(null);
   const [modalNodeTarget, setModalNodeTarget] = useState<string | null>(null);
   const [modalMediaType, setModalMediaType] = useState<'image' | 'video' | 'audio' | null>(null);
 
@@ -1393,6 +1396,7 @@ function WorkflowCanvas() {
         id: childId,
         type,
         position: safePos,
+        dragHandle: '.custom-drag-handle',
         data: {
           label,
           progress: 0,
@@ -1542,14 +1546,38 @@ function WorkflowCanvas() {
       }
     };
 
+    const handleSaveGroupAsTemplate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { groupId } = customEvent.detail || {};
+      if (!groupId) return;
+
+      // 找到组内子节点并设为选中
+      setNodes((nds) => nds.map(n => ({
+        ...n,
+        selected: n.parentId === groupId
+      })));
+
+      // 开启自建画布模板弹窗
+      setActiveFloatingPopup('self-created');
+    };
+
+    const handleRunGroupNodes = (_e: Event) => {
+      // 用 setTimeout 0 避免在 useEffect 闭包里前向引用 handleRunWorkflow
+      setTimeout(() => (window as any).__runWorkflow?.(), 0);
+    };
+
     window.addEventListener('open-large-modal', handleOpenLargeModal);
     window.addEventListener('open-settings', handleOpenSettings);
+    window.addEventListener('save-group-as-template', handleSaveGroupAsTemplate);
+    window.addEventListener('run-group-nodes', handleRunGroupNodes);
 
     return () => {
       delete (window as any).spawnLinkedNode;
       delete (window as any).addUploadedAsset;
       window.removeEventListener('open-large-modal', handleOpenLargeModal);
       window.removeEventListener('open-settings', handleOpenSettings);
+      window.removeEventListener('save-group-as-template', handleSaveGroupAsTemplate);
+      window.removeEventListener('run-group-nodes', handleRunGroupNodes);
     };
   }, [spawnLinkedNode, addUploadedAsset]);
 
@@ -2084,6 +2112,41 @@ function WorkflowCanvas() {
 
   // 挂载高解耦节点组合与拆解层级 Hook (对标 n8n 分组)
   const { handleCreateGroupFromSelected, handleUngroup } = useGroupLogic(nodes, setNodes);
+
+  // 💾 物理框选并打包存为自建画布模板的交互状态
+  const [isSelfSaveOpen, setIsSelfSaveOpen] = useState(false);
+  const [selfSaveName, setSelfSaveName] = useState('');
+  const [selfSaveDesc, setSelfSaveDesc] = useState('');
+
+  // 确认存盘的核心函数
+  const handleSaveSelfTemplate = () => {
+    if (!selfSaveName.trim()) {
+      alert('请输入自建模板的名称！');
+      return;
+    }
+    const selectedNodes = nodes.filter(n => n.selected && n.type !== 'purple-group');
+    if (selectedNodes.length < 2) {
+      alert('请至少框选 2 个以上的节点进行打包！');
+      return;
+    }
+    SelfTemplateService.saveTemplate(
+      selfSaveName,
+      selfSaveDesc,
+      selectedNodes,
+      edges
+    );
+    setIsSelfSaveOpen(false);
+    alert(`🎉 自建画布模板「${selfSaveName}」已成功打包并存入您的个人资产库！`);
+  };
+
+  // 🧩 从大仓中装载自创建连线网络数据到画布的回调
+  const handleSpawnSelfTemplate = useCallback((newNodes: any[], newEdges: any[]) => {
+    // A. 将当前画布的所有节点取消选中
+    setNodes(prev => prev.map(n => ({ ...n, selected: false })));
+    // B. 追加新增的自愈节点和连线
+    setNodes(prev => [...prev, ...newNodes]);
+    setEdges(prev => [...prev, ...newEdges]);
+  }, [setNodes, setEdges]);
 
   const handleNodeContextMenuAction = (actionId: string, nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -3360,6 +3423,7 @@ function WorkflowCanvas() {
       position: safePos,
       width: size.width,
       height: size.height,
+      dragHandle: '.custom-drag-handle',
       data: {
         label: labelMap[type],
         inputs: {
@@ -4111,6 +4175,13 @@ function WorkflowCanvas() {
     };
   };
 
+  // 挂载到 window，供早于声明位置注册的 run-group-nodes 事件监听器调用
+  useEffect(() => {
+    (window as any).__runWorkflow = handleRunWorkflow;
+    return () => { delete (window as any).__runWorkflow; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleInjectPrompt = (promptText: string) => {
     const selected = nodes.find(n => n.selected && (n.type === 'prompt-source' || n.type === 'image-service'));
     if (selected) {
@@ -4325,6 +4396,35 @@ function WorkflowCanvas() {
     setEdges(rollbackEdges);
   };
 
+  // 全局兜底：确保所有节点（含从存档恢复的老节点）都有 dragHandle 限制
+  // 只有点击 .custom-drag-handle 区域才能拖动节点，隐藏面板区域不会误触
+  // 全局保底：100% 物理锁死各节点的物理包围盒 width 和 height，并自动注入 custom-drag-handle 拖拽 handle 属性
+  // 完美歼灭高级菜单撑大 DOM 导致无法拖拉画布、误触乱飞的痛点，将画布空白处全额退还给鼠标平移！
+  const nodesWithDragHandle = useMemo(() =>
+    nodes.map(n => {
+      if (n.type === 'purple-group') return n;
+      let w = n.width;
+      let h = n.height;
+      if (n.type === 'image-service') { w = 180; h = 180; }
+      else if (n.type === 'tts-service') { w = 180; h = 180; }
+      else if (n.type === 'video-fusion') { w = 180; h = 180; }
+      else if (n.type === 'upload-node') { w = 180; h = 180; }
+      else if (n.type === 'loop-node') { w = 180; h = 180; }
+      else if (n.type === 'custom-workflow') { w = 180; h = 180; }
+      else if (n.type === 'custom-workflow-node') { w = 180; h = 180; }
+      else if (n.type === 'grid-splitter') { w = 200; h = 200; }
+      else if (n.type === 'llm-service') { w = 360; h = 320; }
+      else if (n.type === 'prompt-source') { w = 320; h = 280; }
+      return {
+        ...n,
+        width: w,
+        height: h,
+        dragHandle: '.custom-drag-handle'
+      };
+    }),
+    [nodes]
+  );
+
   return (
     <div style={{ 
       width: '100vw', 
@@ -4444,8 +4544,9 @@ function WorkflowCanvas() {
         }}
       >
         <ReactFlow
-          nodes={nodes}
+          nodes={nodesWithDragHandle}
           edges={edges}
+          selectionMode={"partial" as any}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -4523,6 +4624,142 @@ function WorkflowCanvas() {
             position="bottom-left"
           />
         </ReactFlow>
+
+        {/* 🔮 框选即确认悬浮菜单 Action Pill */}
+        <FloatingActionMenu 
+          nodes={nodes}
+          edges={edges}
+          onCreateGroup={handleCreateGroupFromSelected}
+          onSaveAsTemplate={() => {
+            const selectedNodes = nodes.filter(n => n.selected && n.type !== 'purple-group');
+            if (selectedNodes.length < 2) {
+              alert('请至少框选 2 个以上的节点进行打包！');
+              return;
+            }
+            setSelfSaveName('');
+            setSelfSaveDesc('');
+            setIsSelfSaveOpen(true);
+          }}
+        />
+
+        {/* 💾 磨砂玻璃自建连线模板快捷存盘弹窗 */}
+        {isSelfSaveOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(5, 7, 12, 0.65)',
+            backdropFilter: 'blur(12px)',
+            animation: 'fadeInModal 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+          onClick={() => setIsSelfSaveOpen(false)}
+          >
+            <div 
+              className="glass-panel"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '420px',
+                padding: '24px',
+                borderRadius: '20px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+                animation: 'scaleUpLargeModal 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>💾</span>
+                <div style={{ textAlign: 'left' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#fff', margin: 0 }}>打包存为自建画布模板</h3>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0 }}>
+                    将当前框选的 {nodes.filter(n => n.selected && n.type !== 'purple-group').length} 个节点和它们之间的连线关系存盘。
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>模板名称</label>
+                  <input 
+                    type="text" 
+                    value={selfSaveName}
+                    onChange={(e) => setSelfSaveName(e.target.value)}
+                    placeholder="例如：Flux文生图高清工作流"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>模板描述</label>
+                  <textarea 
+                    value={selfSaveDesc}
+                    onChange={(e) => setSelfSaveDesc(e.target.value)}
+                    placeholder="简要描述此模板的作用和主节点配置..."
+                    rows={3}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      outline: 'none',
+                      resize: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                <button 
+                  onClick={() => setIsSelfSaveOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(255,255,255,0.02)',
+                    color: 'rgba(255,255,255,0.7)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={handleSaveSelfTemplate}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)'
+                  }}
+                >
+                  确认存盘
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* 高精智能图像工作坊 */}
@@ -5162,14 +5399,15 @@ function WorkflowCanvas() {
       
       {/* 🔮 Toonflow Center Core Premium Large Modal (85vw * 80vh) */}
       <ToonflowCenterModal
-        isOpen={activeFloatingPopup ? ['templates', 'assets', 'history'].includes(activeFloatingPopup) : false}
-        activeFloatingPopup={activeFloatingPopup ? (['templates', 'assets', 'history'].includes(activeFloatingPopup) ? (activeFloatingPopup as any) : null) : null}
+        isOpen={activeFloatingPopup ? ['templates', 'self_created', 'assets', 'history'].includes(activeFloatingPopup) : false}
+        activeFloatingPopup={activeFloatingPopup ? (['templates', 'self_created', 'assets', 'history'].includes(activeFloatingPopup) ? (activeFloatingPopup as any) : null) : null}
         onClose={closeLargeModal}
         modalNodeTarget={modalNodeTarget}
         modalMediaType={modalMediaType}
         savedTemplates={savedTemplates}
         templatesLoading={templatesLoading}
         onRefreshTemplates={fetchTemplates}
+        onSpawnSelfTemplate={handleSpawnSelfTemplate}
         onSpawnCustomWorkflow={spawnCustomWorkflowTemplateNode}
         onSpawnWorkflow={spawnWorkflowNode}
         onCustomJsonUpload={handleCustomWorkflowJsonUpload}

@@ -216,55 +216,31 @@ export function useUploadNodeLogic({ id, data }: UseUploadNodeLogicProps) {
 
   const processFile = async (file: File) => {
     try {
-      const isVideoByMagic = await new Promise<boolean>((resolve) => {
-        const blob = file.slice(0, 256);
-        const r = new FileReader();
-        r.onload = () => {
-          try {
-            const arr = new Uint8Array(r.result as ArrayBuffer);
-            if (arr.length < 12) { resolve(false); return; }
-            let hasFtyp = false;
-            for (let i = 0; i <= arr.length - 4; i++) {
-              if (arr[i] === 0x66 && arr[i+1] === 0x74 && arr[i+2] === 0x79 && arr[i+3] === 0x70) {
-                hasFtyp = true;
-                break;
-              }
-            }
-            const isWebM = arr[0] === 0x1A && arr[1] === 0x45 && arr[2] === 0xDF && arr[3] === 0xA3;
-            const isAvi = (arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46) &&
-                          (arr[8] === 0x41 && arr[9] === 0x56 && arr[10] === 0x49 && arr[11] === 0x20);
-            resolve(hasFtyp || isWebM || isAvi);
-          } catch (e) {
-            resolve(false);
-          }
-        };
-        r.onerror = () => resolve(false);
-        r.readAsArrayBuffer(blob);
-      });
-
       let detectedType: 'image' | 'video' | 'audio' = 'image';
       const lowerName = file.name.toLowerCase();
-      if (isVideoByMagic) {
-        detectedType = 'video';
-      } else if (lowerName.endsWith('.mp4') || lowerName.endsWith('.webm') || lowerName.endsWith('.mov') || lowerName.endsWith('.mkv') || lowerName.endsWith('.avi')) {
+      if (lowerName.endsWith('.mp4') || lowerName.endsWith('.webm') || lowerName.endsWith('.mov') || lowerName.endsWith('.mkv') || lowerName.endsWith('.avi')) {
         detectedType = 'video';
       } else if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a') || lowerName.endsWith('.flac') || lowerName.endsWith('.aac') || lowerName.endsWith('.ogg')) {
         detectedType = 'audio';
-      } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.gif') || lowerName.endsWith('.webp') || lowerName.endsWith('.bmp')) {
-        detectedType = 'image';
-      } else if (file.type === 'audio/mp4') {
-        detectedType = 'video';
       } else if (file.type.startsWith('video/')) {
         detectedType = 'video';
       } else if (file.type.startsWith('audio/')) {
         detectedType = 'audio';
       }
 
-      if (detectedType === 'video' || detectedType === 'audio') {
-        const blobUrl = URL.createObjectURL(file);
-        
-        const saveAndSetNodeData = async (finalUrl: string) => {
-          try {
+      const reader = new FileReader();
+      reader.onerror = (err) => {
+        console.error('[UploadNode] FileReader error:', err);
+        alert('文件读取失败！');
+      };
+      reader.onload = async () => {
+        try {
+          if (typeof reader.result === 'string') {
+            const base64 = reader.result;
+
+            // 统一直接上传至 MinIO，获取标准公共可读 HTTP 链路，或者自愈回退为 Blob URL
+            const finalUrl = await UploadService.uploadBase64(base64, file.name, detectedType);
+
             const addAsset = (window as any).addUploadedAsset;
             if (typeof addAsset === 'function') {
               await addAsset(detectedType, finalUrl, `📦 上传资源: ${file.name}`);
@@ -294,71 +270,6 @@ export function useUploadNodeLogic({ id, data }: UseUploadNodeLogicProps) {
                 return n;
               })
             );
-          } catch (innerErr) {
-            console.error('[UploadNode] saveAndSetNodeData async error:', innerErr);
-            alert('本地上传文件保存失败，请重试！');
-          }
-        };
-
-        saveAndSetNodeData(blobUrl);
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onerror = (err) => {
-        console.error('[UploadNode] FileReader error:', err);
-        alert('文件读取失败！');
-      };
-      reader.onload = () => {
-        try {
-          if (typeof reader.result === 'string') {
-            const base64 = reader.result;
-
-            const saveAndSetNodeData = async (b64: string) => {
-              try {
-                const saveMedia = (window as any).saveMediaToDB;
-                const addAsset = (window as any).addUploadedAsset;
-                let finalUrl = b64;
-                if (typeof saveMedia === 'function') {
-                  const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                  await saveMedia(mediaId, b64);
-                  finalUrl = `db://${mediaId}`;
-                }
-
-                if (typeof addAsset === 'function') {
-                  await addAsset(detectedType, finalUrl, `📦 上传资源: ${file.name}`);
-                }
-
-                setNodes((nds) =>
-                  nds.map((n) => {
-                    if (n.id === id) {
-                      return {
-                        ...n,
-                        data: {
-                          ...n.data,
-                          inputs: {
-                            ...(n.data?.inputs as any),
-                            fileType: detectedType,
-                            fileUrl: finalUrl,
-                            fileName: file.name,
-                          },
-                          outputs: {
-                            ...(n.data?.outputs as any),
-                            output: finalUrl,
-                            fileType: detectedType,
-                          },
-                        },
-                      };
-                    }
-                    return n;
-                  })
-                );
-              } catch (innerErr) {
-                console.error('[UploadNode] saveAndSetNodeData async error:', innerErr);
-                alert('本地上传文件保存失败，请重试！');
-              }
-            };
-            saveAndSetNodeData(base64);
           }
         } catch (onloadErr) {
           console.error('[UploadNode] FileReader onload error:', onloadErr);

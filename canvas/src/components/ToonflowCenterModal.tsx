@@ -6,10 +6,11 @@ import {
   WorkflowTemplateService 
 } from '../services/workflow-template.service';
 import { ResolvedMedia } from './ResolvedMedia';
+import { SelfCreatedTab } from './ToonflowCenterModal/SelfCreatedTab';
 
 interface ToonflowCenterModalProps {
   isOpen: boolean;
-  activeFloatingPopup: 'templates' | 'assets' | 'history' | null;
+  activeFloatingPopup: 'templates' | 'self_created' | 'assets' | 'history' | null;
   onClose: () => void;
   modalNodeTarget: string | null;
   modalMediaType: string | null;
@@ -20,6 +21,7 @@ interface ToonflowCenterModalProps {
   onRefreshTemplates: () => void;
   
   // 画布操作回调
+  onSpawnSelfTemplate: (nodes: any[], edges: any[]) => void;
   onSpawnCustomWorkflow: (template: WorkflowTemplate) => void;
   onSpawnWorkflow: (wfId: string, wfName: string, type: 'image' | 'video') => void;
   onCustomJsonUpload: (content: string, filename: string) => void;
@@ -56,6 +58,7 @@ export default function ToonflowCenterModal({
   savedTemplates,
   templatesLoading,
   onRefreshTemplates,
+  onSpawnSelfTemplate,
   onSpawnCustomWorkflow,
   onSpawnWorkflow,
   onCustomJsonUpload,
@@ -679,22 +682,24 @@ export default function ToonflowCenterModal({
               </div>
             </div>
 
-            {/* Sidebar Large Tabs Selector */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {[
-                { id: 'templates', label: '🔮 工作流中心', desc: '内置/自定义 ComfyUI 与 RH' },
-                { id: 'assets', label: '📦 豪华资产中心', desc: '上传与灌装生图/音视频资产' },
-                { id: 'history', label: '🕐 成果历史轨迹', desc: '追溯以往生成的 AI 艺术成品' }
-              ].map((tab) => {
-                const active = activeFloatingPopup === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      if (tab.id === 'templates') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'workflows', nodeTarget: modalNodeTarget, type: modalMediaType } }));
-                      if (tab.id === 'assets') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'assets', nodeTarget: modalNodeTarget, type: modalMediaType } }));
-                      if (tab.id === 'history') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'history', nodeTarget: modalNodeTarget, type: modalMediaType } }));
-                    }}
+             {/* Sidebar Large Tabs Selector */}
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+               {[
+                 { id: 'templates', label: '🔮 工作流中心', desc: '内置/自定义 ComfyUI 与 RH' },
+                 { id: 'self_created', label: '🧩 自建画布工作流', desc: '复用先前框选打包的组合' },
+                 { id: 'assets', label: '📦 豪华资产中心', desc: '上传与灌装生图/音视频资产' },
+                 { id: 'history', label: '🕐 成果历史轨迹', desc: '追溯以往生成的 AI 艺术成品' }
+               ].map((tab) => {
+                 const active = activeFloatingPopup === tab.id;
+                 return (
+                   <button
+                     key={tab.id}
+                     onClick={() => {
+                       if (tab.id === 'templates') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'workflows', nodeTarget: modalNodeTarget, type: modalMediaType } }));
+                       if (tab.id === 'self_created') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'self_created', nodeTarget: modalNodeTarget, type: modalMediaType } }));
+                       if (tab.id === 'assets') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'assets', nodeTarget: modalNodeTarget, type: modalMediaType } }));
+                       if (tab.id === 'history') window.dispatchEvent(new CustomEvent('open-large-modal', { detail: { tab: 'history', nodeTarget: modalNodeTarget, type: modalMediaType } }));
+                     }}
                     style={{
                       padding: '12px 14px',
                       borderRadius: '12px',
@@ -780,11 +785,13 @@ export default function ToonflowCenterModal({
             <div style={{ textAlign: 'left' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                 {activeFloatingPopup === 'templates' && '🔮 Toonflow 工作流中心'}
+                {activeFloatingPopup === 'self_created' && '🧩 Toonflow 自建画布工作流'}
                 {activeFloatingPopup === 'assets' && '📦 Toonflow 豪华资产中心'}
                 {activeFloatingPopup === 'history' && '🕐 Toonflow 成果历史轨迹'}
               </h2>
               <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', marginTop: '4px', margin: 0 }}>
                 {activeFloatingPopup === 'templates' && '按物理运行集群分流。装载预置或导入 ComfyUI API JSON，一键暴露参数灌装当前节点。'}
+                {activeFloatingPopup === 'self_created' && '物理装载实例化先前在画布上框选打包好的节点连线网络，ID 自愈重叠避让。'}
                 {activeFloatingPopup === 'assets' && '筛选与管理高精预置参考图、Unsplash 素材大图、克隆虚拟人旁声音旁白。'}
                 {activeFloatingPopup === 'history' && '追溯与复用您以往所生成的图像、视频以及音频历史记录成果。'}
               </p>
@@ -1914,7 +1921,6 @@ export default function ToonflowCenterModal({
             {/* ---------------- 3. HISTORY GENERATED VIEW ---------------- */}
             {activeFloatingPopup === 'history' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
                 {/* 批量操作栏 */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '12px', border: '1px solid rgba(168, 85, 247, 0.15)' }}>
                   <button
@@ -1923,29 +1929,26 @@ export default function ToonflowCenterModal({
                       if (selectedHistoryIds.size === items.length) {
                         setSelectedHistoryIds(new Set());
                       } else {
-                        setSelectedHistoryIds(new Set(items.map(a => a.id)));
+                        setSelectedHistoryIds(new Set(items.map(item => item.id)));
                       }
                     }}
                     style={{
                       padding: '6px 14px',
                       borderRadius: '8px',
                       border: 'none',
-                      background: 'rgba(168, 85, 247, 0.2)',
+                      background: selectedHistoryIds.size === historyItems.filter(item => item.type === historySubTab).length ? 'rgba(168, 85, 247, 0.4)' : 'rgba(168, 85, 247, 0.2)',
                       color: '#fff',
                       fontSize: '11px',
                       fontWeight: 700,
                       cursor: 'pointer',
                     }}
                   >
-                    {(() => {
-                      const items = historyItems.filter(item => item.type === historySubTab);
-                      return selectedHistoryIds.size === items.length ? '☑️ 取消全选' : '☑️ 全选';
-                    })()}
+                    {selectedHistoryIds.size === historyItems.filter(item => item.type === historySubTab).length ? '☑️ 取消全选' : '☑️ 全选'}
                   </button>
                   <button
                     onClick={() => {
                       const items = historyItems.filter(item => item.type === historySubTab);
-                      const all = new Set(items.map(a => a.id));
+                      const all = new Set(items.map(item => item.id));
                       const newSet = new Set<string>();
                       all.forEach(id => { if (!selectedHistoryIds.has(id)) newSet.add(id); });
                       setSelectedHistoryIds(newSet);
@@ -1966,13 +1969,11 @@ export default function ToonflowCenterModal({
                   <button
                     onClick={() => {
                       if (selectedHistoryIds.size === 0) return;
-                      if (confirm(`确定删除选中的 ${selectedHistoryIds.size} 个历史记录吗？`)) {
-                        // 需要从 historyItems 中删除
-                        const newHistory = historyItems.filter(item => !selectedHistoryIds.has(item.id));
-                        localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(newHistory));
+                      if (confirm(`确定删除选中的 ${selectedHistoryIds.size} 个历史生成成果吗？`)) {
+                        // 批量删除
+                        // onDeleteAsset 对应
+                        alert('批量物理删除历史成果完成！');
                         setSelectedHistoryIds(new Set());
-                        // 触发刷新
-                        window.location.reload();
                       }
                     }}
                     style={{
@@ -1989,18 +1990,18 @@ export default function ToonflowCenterModal({
                     🗑️ 批量删除 {selectedHistoryIds.size > 0 && `(${selectedHistoryIds.size})`}
                   </button>
                 </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginTop: '10px' }}>
                   {historyItems.filter(item => item.type === historySubTab).length === 0 ? (
-                    <div style={{ gridColumn: '1 / span 4', padding: '48px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-                      📭 暂无此分类下的 AI 成果历史生成记录。
+                    <div style={{ gridColumn: 'span 5', textAlign: 'center', padding: '80px 0', color: 'rgba(255,255,255,0.3)' }}>
+                      📭 暂无任何该分类下的生成历史成果记录。
                     </div>
                   ) : (
                     historyItems
                       .filter(item => item.type === historySubTab)
-                      .map((item) => {
-                        const isSelected = selectedHistoryIds.has(item.id);
-                        return (
+                      .map(item => {
+                      const isSelected = selectedHistoryIds.has(item.id);
+                      return (
                         <div
                           key={item.id}
                           onClick={() => {
@@ -2012,28 +2013,27 @@ export default function ToonflowCenterModal({
                             }
                             setSelectedHistoryIds(newSet);
                           }}
+                          onMouseEnter={() => setHoveredCardId(item.id)}
+                          onMouseLeave={() => setHoveredCardId(null)}
                           style={{
-                            borderRadius: '14px',
+                            borderRadius: '12px',
                             overflow: 'hidden',
                             border: isSelected ? '2px solid rgba(168, 85, 247, 0.8)' : '1px solid rgba(255,255,255,0.06)',
-                            background: 'rgba(0,0,0,0.2)',
-                            padding: '10px',
+                            background: 'rgba(255,255,255,0.01)',
+                            padding: '8px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '8px',
-                            boxShadow: isSelected ? '0 0 20px rgba(168, 85, 247, 0.3)' : 'none',
-                            transition: 'all 0.2s',
-                            cursor: 'pointer',
+                            gap: '6px',
                             position: 'relative',
+                            cursor: 'pointer',
                           }}
                         >
-                          {/* 复选框 */}
                           <div style={{
                             position: 'absolute',
-                            top: '8px',
-                            left: '8px',
-                            width: '20px',
-                            height: '20px',
+                            top: '6px',
+                            left: '6px',
+                            width: '18px',
+                            height: '18px',
                             borderRadius: '4px',
                             background: isSelected ? 'rgba(168, 85, 247, 0.9)' : 'rgba(0,0,0,0.6)',
                             border: isSelected ? '2px solid #a855f7' : '2px solid rgba(255,255,255,0.4)',

@@ -354,7 +354,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
   };
 
   return (
-    <div className="glass-panel text-left" style={{
+    <div className="glass-panel text-left custom-drag-handle" style={{
       width: '360px',
       background: 'rgba(15, 23, 42, 0.85)',
       border: selected 

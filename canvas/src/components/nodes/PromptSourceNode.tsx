@@ -414,7 +414,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
   }, [connectedImage]);
 
   return (
-    <div ref={containerRef} className="glass-panel text-left" style={{
+    <div ref={containerRef} className="glass-panel text-left custom-drag-handle" style={{
       width: '100%',
       height: '100%',
       minWidth: '320px',

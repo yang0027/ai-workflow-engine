@@ -167,7 +167,7 @@ export default function LoopNode({ id, data, selected }: LoopNodeProps) {
 
   return (
     <div
-      className="loop-node-container"
+      className="loop-node-container custom-drag-handle"
       style={{
         width: '180px',
         height: '180px',

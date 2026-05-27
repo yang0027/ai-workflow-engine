@@ -68,7 +68,7 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
 
   return (
     <div
-      className="relative upload-node-container"
+      className="relative upload-node-container custom-drag-handle"
       style={{
         position: 'relative',
         width: '180px',
@@ -275,7 +275,7 @@ export default function UploadNode({ id, data, selected }: UploadNodeProps) {
 
       {/* Main Glass Card (NodeVisual UI Sub Component) */}
       <div
-        className={`glass-card ${data.isNew ? 'new-node-glow' : ''}`}
+        className={data.isNew ? 'new-node-glow' : ''}
         onDoubleClick={() => {
           if (!logic.fileUrl) return;
           if (logic.fileType === 'image') {

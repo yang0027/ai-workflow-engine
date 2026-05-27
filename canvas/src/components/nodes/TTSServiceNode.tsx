@@ -107,7 +107,7 @@ export default function TTSServiceNode({ id, data, selected = false }: TTSServic
 
   return (
     <div 
-      className="relative text-left tts-node-container" 
+      className="relative text-left tts-node-container custom-drag-handle" 
       style={{
         position: 'relative',
         width: '180px',

@@ -112,7 +112,7 @@ export default function VideoFusionNode({ id, data, selected }: VideoFusionNodeP
 
   return (
     <div 
-      className="relative text-left video-node-container" 
+      className="relative text-left video-node-container custom-drag-handle" 
       style={{
         position: 'relative',
         width: '180px',

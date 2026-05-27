@@ -76,7 +76,7 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
 
   return (
     <div 
-      className="relative text-left image-service-node-container"
+      className="relative text-left image-service-node-container custom-drag-handle"
       style={{
         position: 'relative',
         width: '180px',
