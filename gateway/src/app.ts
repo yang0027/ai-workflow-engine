@@ -3,7 +3,10 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ 
+  logger: true,
+  bodyLimit: 52428800 // 50MB 物理大载荷支持
+});
 
 // 注册 CORS 与 WebSocket 和文件上传
 await fastify.register(cors, { origin: true });
@@ -357,7 +360,7 @@ fastify.post('/api/v1/comfyui/upload', async (request, reply) => {
 
     const uploadRes = await fetch(`${host}/upload/image`, {
       method: 'POST',
-      body: fd
+      body: fd as any
     });
 
     if (!uploadRes.ok) {
@@ -368,6 +371,21 @@ fastify.post('/api/v1/comfyui/upload', async (request, reply) => {
     return { files: [{ name: result.name || filename }] };
   } catch (err: any) {
     return reply.status(500).send({ error: `Upload failed: ${err.message}` });
+  }
+});
+
+// ============ 10.3 网关代理：通用的文件上传到 MinIO (支持 JSON Base64 格式) ============
+fastify.post('/api/v1/upload', async (request, reply) => {
+  try {
+    const response = await fetch(`${ENGINE_URL}/api/v1/engine/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request.body)
+    });
+    const data = await response.json();
+    return reply.status(response.status).send(data);
+  } catch (err: any) {
+    return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
   }
 });
 

@@ -167,6 +167,7 @@ export default function LoopNode({ id, data, selected }: LoopNodeProps) {
 
   return (
     <div
+      className="loop-node-container"
       style={{
         width: '180px',
         height: '180px',
@@ -461,22 +462,22 @@ export default function LoopNode({ id, data, selected }: LoopNodeProps) {
 
       {/* 嵌入高阶 CSS：控制 Handle 磁力自动吸附与高级过渡动画 */}
       <style>{`
-        .react-flow__handle {
+        .loop-node-container .react-flow__handle {
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
-        .react-flow__handle:hover {
+        .loop-node-container .react-flow__handle:hover {
           transform: translateY(-50%) scale(1.3) !important;
           background: rgba(244, 63, 94, 1) !important;
           border-color: #fff !important;
           box-shadow: 0 0 18px rgba(244, 63, 94, 0.95) !important;
         }
-        .react-flow__handle::after {
+        .loop-node-container .react-flow__handle::after {
           content: '';
           position: absolute;
-          top: -14px;
-          left: -14px;
-          right: -14px;
-          bottom: -14px;
+          top: -4px;
+          left: -4px;
+          right: -4px;
+          bottom: -4px;
           border-radius: 50%;
           background: transparent;
           cursor: crosshair;

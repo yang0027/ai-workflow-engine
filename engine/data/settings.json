@@ -4,7 +4,7 @@
   ],
   "providers": {
     "volcengine": {
-      "enabled": true,
+      "enabled": false,
       "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
       "apiKey": "ef0b9259-a6b3-4695-8b6f-41095d3de060",
       "models": []
@@ -16,22 +16,48 @@
       "models": []
     },
     "deepseek": {
-      "enabled": true,
+      "enabled": false,
       "baseUrl": "https://api.deepseek.com",
       "apiKey": "sk-9f4dbbc0b4334f8d902fb519637e25b9",
-      "models": []
+      "models": [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro"
+      ]
     },
     "ali": {
-      "enabled": true,
+      "enabled": false,
       "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "apiKey": "sk-893954928c224974bcf86afc1ed25cfe",
       "models": []
     },
     "minimax": {
-      "enabled": true,
+      "enabled": false,
       "baseUrl": "https://api.minimaxi.com/v1",
       "apiKey": "sk-api-kH-xwwJbho0d5eRAo03k4nZ1e4Jw02L11J2RfBTLiYOSJIkUo6BgjRPPlfHVEAFIoCDWdtMNqemiMwApk-4IEcCY-xsSzg5aXILIVC7n2VkBhcA3l6WboVU",
       "models": []
+    },
+    "01": {
+      "enabled": true,
+      "baseUrl": "https://api.zhangvip.top/v1",
+      "apiKey": "sk-Wgxda0oQv9JC8jr9k5F9mxulEULAnlBOyjOUnahJpvnX4HTF",
+      "models": [
+        "doubao-seedream-5-0-lite",
+        "gpt-5.4",
+        "grok-imagine-1.0-video-apimart",
+        "doubao-seedance-2.0",
+        "viduq3",
+        "qwen-image-2.0-pro",
+        "doubao-seedance-2.0-face",
+        "gpt-image-2-official",
+        "MiniMax-Hailuo-2.3-Fast",
+        "grok-imagine-1.0-apimart",
+        "gpt-5.4-mini",
+        "MiniMax-Hailuo-2.3",
+        "sora-2-pro",
+        "gpt-5.5",
+        "gemini-3.1-flash-image-preview",
+        "qwen-image-2.0"
+      ]
     }
   },
   "model_cache": {
@@ -41,61 +67,34 @@
       "gpt-4o",
       "deepseek-chat",
       "qwen-plus",
-      "MiniMax-M2.7-highspeed",
-      "MiniMax-M2.5-highspeed",
-      "MiniMax-M2.1",
-      "MiniMax-M2.1-highspeed",
-      "MiniMax-M2",
-      "gpt-4.1",
-      "gpt-5.1",
-      "gpt-5.2",
       "gpt-5.4",
-      "claude-sonnet-4-6",
-      "claude-opus-4-6",
-      "claude-sonnet-4-5-20250929",
-      "claude-opus-4-5-20251101",
-      "claude-haiku-4-5-20251001",
-      "doubao-seed-2-0-pro-260215",
-      "doubao-seed-2-0-lite-260215",
-      "doubao-seed-2-0-mini-260215",
-      "doubao-seed-2-0-code-preview-260215",
-      "doubao-seed-character-251128",
-      "doubao-seed-1-8-251228",
-      "doubao-seed-code-preview-251028",
-      "doubao-seed-1-6-lite-251015",
-      "doubao-seed-1-6-flash-250828",
-      "doubao-seed-1-6-vision-250815",
-      "doubao-seed-1-6-251015",
-      "doubao-seed-1-6-250615",
-      "doubao-seed-1-6-flash-250615",
-      "doubao-seed-translation-250915",
-      "doubao-1-5-pro-32k-250115",
-      "doubao-1-5-pro-32k-character-250715",
-      "doubao-1-5-pro-32k-character-250228",
-      "doubao-1-5-lite-32k-250115",
-      "doubao-1-5-vision-pro-32k-250115",
-      "glm-4-7-251222",
-      "deepseek-v3-2-251201",
-      "deepseek-v3-1-terminus",
-      "deepseek-v3-250324",
-      "deepseek-r1-250528",
-      "qwen3-32b-20250429",
-      "qwen3-14b-20250429",
-      "qwen3-8b-20250429",
-      "qwen3-0-6b-20250429",
-      "qwen2-5-72b-20240919",
-      "glm-4-5-air"
+      "gpt-5.4-mini",
+      "gpt-5.5",
+      "gemini-3.1-flash-image-preview"
     ],
     "image": [
-      "Doubao-Seedream-5.0-Lite",
-      "Flux-1-Dev",
-      "SDXL-Turbo"
+      "doubao-seedream-5-0-lite",
+      "flux-1-dev",
+      "sdxl-turbo",
+      "qwen-image-2.0-pro",
+      "gpt-image-2-official",
+      "qwen-image-2.0",
+      "gemini-3.1-flash-image-preview",
+      "grok-imagine-1.0-apimart",
+      "grok-imagine-1.0-video-apimart"
     ],
     "video": [
       "Wan2.6-I2V-1080P",
       "doubao-seedance-1-5-pro-251215",
       "ViduQ3-pro",
-      "Kling-v2"
+      "Kling-v2",
+      "doubao-seedance-2.0",
+      "viduq3",
+      "MiniMax-Hailuo-2.3-Fast",
+      "MiniMax-Hailuo-2.3",
+      "sora-2-pro",
+      "grok-imagine-1.0-video-apimart",
+      "doubao-seedance-2.0-face"
     ],
     "tts": [
       "RunningHub-TTS-VoiceClone",

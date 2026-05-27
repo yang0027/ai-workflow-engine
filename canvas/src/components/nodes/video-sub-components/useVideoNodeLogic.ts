@@ -268,18 +268,53 @@ export function useVideoNodeLogic({
     loadSettings();
   }, []);
 
+  // 动态聚合并过滤出所有已开启的内置及自定义 API 服务商
+  const activeProviders = useMemo(() => {
+    if (!settings || !settings.providers) {
+      return [
+        { id: 'vidu', label: 'Vidu (视频生成)' },
+        { id: 'volcengine', label: '火山引擎 (豆包)' },
+        { id: 'minimax', label: 'MiniMax (海螺视频)' },
+        { id: 'ali', label: '通义万相 (阿里)' }
+      ];
+    }
+    const builtInLabels: Record<string, string> = {
+      vidu: 'Vidu (视频生成)',
+      volcengine: '火山引擎 (豆包)',
+      minimax: 'MiniMax (海螺视频)',
+      ali: '通义万相 (阿里)',
+      deepseek: 'DeepSeek',
+      runninghub: 'RunningHub'
+    };
+    return Object.keys(settings.providers)
+      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // 视频节点不需要将 RunningHub 作为常规 API 服务商展示
+      .map(pid => ({
+        id: pid,
+        label: settings.providers[pid].name || builtInLabels[pid] || pid
+      }));
+  }, [settings]);
+
   const currentProviderModels = useMemo(() => {
     const defaultModels = DEFAULT_PROVIDER_VIDEO_MODELS[providerId] || [];
     if (!settings || !settings.providers || !settings.providers[providerId]) {
       return defaultModels;
     }
     const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models)) {
+    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
       return defaultModels;
     }
-    const videoKeywords = /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma/i;
-    const filtered = provider.models.filter((m: string) => videoKeywords.test(m));
-    return filtered.length > 0 ? filtered : defaultModels;
+    
+    // 核心重构：与大仓中已勾选的视频模型进行求交集，实现真正的模型点选分类过滤
+    const cachedVideoModels = settings.model_cache?.video || [];
+    const filtered = provider.models.filter((m: string) => cachedVideoModels.includes(m));
+    if (filtered.length > 0) {
+      return filtered;
+    }
+
+    // 降级：如果交集为空，才使用默认的正则分类过滤
+    const videoKeywords = /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma|kling|hailuo/i;
+    const regexFiltered = provider.models.filter((m: string) => videoKeywords.test(m));
+    return regexFiltered.length > 0 ? regexFiltered : provider.models;
   }, [settings, providerId]);
 
   const model = data.inputs?.model || currentProviderModels[0] || 'vidu-high-speed';
@@ -889,6 +924,8 @@ export function useVideoNodeLogic({
     isRefVideoConnected,
     isRefAudioConnected,
     providerId,
+    activeProviders,
+    settings,
     activeTab,
     videoModeTab,
     runningHubTemplateId,

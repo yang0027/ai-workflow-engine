@@ -274,10 +274,16 @@ export class ComfyUIAdapter {
         console.log(`[ComfyUIAdapter] 📁 文件物理落地成功: ${targetPath}`);
 
         // 7. 物理联动：同步上传到 MinIO 的 workflows 桶中
-        await this.uploadToMinio(uniqueName, fileBuffer);
+        // 7. 物理联动：同步上传到 MinIO 的 workflows 桶中
+        const minioOk = await this.uploadToMinio(uniqueName, fileBuffer);
 
-        const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
-        downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${encodeURIComponent(uniqueName)}`;
+        if (minioOk) {
+          downloadedUrl = `http://localhost:19000/workflows/${uniqueName}`;
+        } else {
+          // 备用防灾降级网络：返回本地 outputs 网关代理 URL
+          const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
+          downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${encodeURIComponent(uniqueName)}`;
+        }
         break; // 只要解析到第一个有效的输出即可
       }
     }
@@ -292,24 +298,28 @@ export class ComfyUIAdapter {
   /**
    * 极简 MinIO 上传逻辑，将生成结果同步注入 19000 端口的对象存储中
    */
-  private async uploadToMinio(filename: string, buffer: Buffer) {
+  private async uploadToMinio(filename: string, buffer: Buffer): Promise<boolean> {
     try {
-      // 1. 尝试初始化/确保 workflows 桶存在 (匿名 PUT 上传在 MinIO 中如果桶不存在会报 404)
-      // 我们在网关或后端以标准 PUT 传输到 MinIO 19000
-      // 默认 MinIO 的账户是 minioadmin/minioadmin
-      const mimeType = filename.endsWith('.mp4') ? 'video/mp4' : 'image/png';
+      let mimeType = 'image/png';
+      const ext = path.extname(filename).toLowerCase();
+      if (ext === '.mp4') mimeType = 'video/mp4';
+      else if (ext === '.gif') mimeType = 'image/gif';
+      else if (ext === '.webp') mimeType = 'image/webp';
+      else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
       
       console.log(`[MinIO Linkage] 📦 正在同步分发 ${filename} 到本地 MinIO 存储桶...`);
       await axios.put(`http://localhost:19000/workflows/${filename}`, buffer, {
         headers: {
           'Content-Type': mimeType
         },
-        timeout: 3000
+        timeout: 5000
       });
       console.log(`[MinIO Linkage] 🎉 物理分发成功！MinIO 地址: http://localhost:19000/workflows/${filename}`);
+      return true;
     } catch (e: any) {
       // 容错降级：如果 MinIO 未拉起或未配置 Bucket，不阻塞整体画布引擎
-      console.warn(`[MinIO Linkage] ⚠️ 同步到 MinIO 失败 (降级由本地静态服务接管): ${e.message}`);
+      console.warn(`[MinIO Linkage] ⚠️ 同步到 MinIO 失败 (已自动启用降级防灾本地链路): ${e.message}`);
+      return false;
     }
   }
 }

@@ -1,3 +1,4 @@
+import ToonflowCenterModal from './components/ToonflowCenterModal';
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   ReactFlow,
@@ -23,6 +24,8 @@ import '@xyflow/react/dist/style.css';
 
 // 引入全局配置弹窗与自定义工作流画布节点与 5 大 Agent 节点
 import SettingsModal from './components/SettingsModal';
+import { CanvasManager } from './components/CanvasManager';
+import { CanvasSnapshotPanel } from './components/CanvasSnapshotPanel';
 import CustomWorkflowNode from './components/nodes/CustomWorkflowNode';
 import { WorkflowTemplateService, WorkflowTemplate } from './services/workflow-template.service';
 import PromptSourceNode from './components/nodes/PromptSourceNode';
@@ -32,8 +35,10 @@ import TTSServiceNode from './components/nodes/TTSServiceNode';
 import VideoFusionNode from './components/nodes/VideoFusionNode';
 import PurpleGroupNode from './components/nodes/PurpleGroupNode';
 import UploadNode from './components/nodes/UploadNode';
-import GridSplitterNode from './components/nodes/GridSplitterNode';
+import GridNode from './components/nodes/GridNode';
 import { PRESET_WORKFLOWS } from './presets/workflows';
+import { useGroupLogic } from './hooks/useGroupLogic';
+import { UploadService } from './services/upload.service';
 import LoopNode from './components/nodes/LoopNode';
 import ImageEditorModal from './components/ImageEditorModal';
 import { RunningHubService } from './services/runninghub.service';
@@ -144,21 +149,18 @@ function getDB(): Promise<IDBDatabase> {
 }
 
 async function saveMediaToDB(id: string, base64Data: string): Promise<void> {
-  try {
-    const db = await getDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    store.put({ id, data: base64Data });
-    return new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (e) {
-    console.error('[IndexedDB] save failed:', e);
-  }
+  // 核心架构重构：全面封杀前端高负荷的 IndexedDB 写入，全量资产走 MinIO 统一 HTTP 存储
+  return Promise.resolve();
 }
 
 async function getMediaFromDB(id: string): Promise<string | null> {
+  if (!id) return null;
+  // 统一存储直通车：如果是普通的 HTTP/HTTPS 链接或原生 Base64，直接直通返回，不再产生任何 IndexedDB 开销
+  if (id.startsWith('http') || id.startsWith('data:')) {
+    return id;
+  }
+  
+  // 向下兼容自愈：仅当为历史老画布的 db:// 资产时，才进行 IndexedDB 的防崩读取
   try {
     const db = await getDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
@@ -188,7 +190,7 @@ const nodeTypes = {
   'video-fusion': VideoFusionNode,
   'purple-group': PurpleGroupNode,
   'upload-node': UploadNode,
-  'grid-splitter': GridSplitterNode,
+  'grid-splitter': GridNode,
   'loop-node': LoopNode,
 };
 
@@ -519,8 +521,8 @@ function WorkflowCanvas() {
       dataInputs = { providerId: 'volcengine', model: 'vidu-high-speed', prompt: '', imageRef: '', audioUrl: '' };
       dataOutputs = { video: '', output: '' };
     } else if (targetType === 'grid-splitter') {
-      label = '⊞ 智能切片';
-      dataInputs = { cols: 2, rows: 2, gap: 0 };
+      label = '⊞ 宫格排版合成';
+      dataInputs = { gridType: '2x2', gap: 8, bgColor: '#0f172a', borderRadius: 8, outputSize: 2048, localImages: {} };
       dataOutputs = { output: '' };
     } else if (targetType === 'loop-node') {
       label = '🔄 循环迭代';
@@ -646,7 +648,10 @@ function WorkflowCanvas() {
   }, [edges]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsActiveTab, setSettingsActiveTab] = useState<'comfy' | 'providers' | 'runninghub_api' | 'workflow' | 'cache' | 'templates'>('comfy');
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'comfy' | 'providers' | 'runninghub_api' | 'cache' | 'templates'>('comfy');
+  const [isCanvasManagerOpen, setIsCanvasManagerOpen] = useState(false);
+  const [currentCanvasId, setCurrentCanvasId] = useState<string | null>(null);
+  const [snapshotCanvasId, setSnapshotCanvasId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
 
   // 抽屉内部状态
@@ -720,18 +725,15 @@ function WorkflowCanvas() {
     const posY = targetNode.position?.y || 0;
 
     if (result.mode === 'crop' || result.mode === 'brush') {
+      const finalUrl = await UploadService.uploadBase64(
+        result.dataUrl,
+        `toonflow-edit-${Date.now()}.png`,
+        'image'
+      );
+
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === nodeId) {
-            const saveMedia = (window as any).saveMediaToDB;
-            let finalUrl = result.dataUrl;
-
-            if (typeof saveMedia === 'function') {
-              const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              saveMedia(mediaId, result.dataUrl);
-              finalUrl = `db://${mediaId}`;
-            }
-
             const isUpload = n.type === 'upload-node';
             return {
               ...n,
@@ -739,13 +741,14 @@ function WorkflowCanvas() {
                 ...n.data,
                 inputs: {
                   ...(n.data?.inputs as any),
-                  fileUrl: isUpload ? finalUrl : (n.data?.inputs as any)?.fileUrl,
+                  // 上传节点的输入原图 inputs.fileUrl 保持原样，绝不覆盖
+                  fileUrl: isUpload ? (n.data?.inputs as any)?.fileUrl : (n.data?.inputs as any)?.fileUrl,
                   prompt: !isUpload ? (n.data?.inputs as any)?.prompt : undefined,
                 },
                 outputs: {
                   ...(n.data?.outputs as any),
-                  output: isUpload ? finalUrl : undefined,
-                  image: !isUpload ? finalUrl : undefined
+                  output: finalUrl,
+                  image: finalUrl
                 }
               }
             };
@@ -755,16 +758,15 @@ function WorkflowCanvas() {
       );
     }
     else if (result.mode === 'mask') {
+      const finalUrl = await UploadService.uploadBase64(
+        result.dataUrl,
+        `toonflow-mask-bg-${Date.now()}.png`,
+        'image'
+      );
+
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === nodeId) {
-            const saveMedia = (window as any).saveMediaToDB;
-            let finalUrl = result.dataUrl;
-            if (typeof saveMedia === 'function') {
-              const mediaId = `media-asset-prev-${Date.now()}`;
-              saveMedia(mediaId, result.dataUrl);
-              finalUrl = `db://${mediaId}`;
-            }
             return {
               ...n,
               data: {
@@ -783,13 +785,11 @@ function WorkflowCanvas() {
       );
 
       if (result.maskDataUrl) {
-        const saveMedia = (window as any).saveMediaToDB;
-        let maskUrl = result.maskDataUrl;
-        if (typeof saveMedia === 'function') {
-          const mediaId = `media-asset-mask-${Date.now()}`;
-          await saveMedia(mediaId, result.maskDataUrl);
-          maskUrl = `db://${mediaId}`;
-        }
+        const maskUrl = await UploadService.uploadBase64(
+          result.maskDataUrl,
+          `toonflow-inpaint-mask-${Date.now()}.png`,
+          'image'
+        );
 
         const childId = `upload-node-${Date.now()}`;
         const childNode = {
@@ -826,18 +826,16 @@ function WorkflowCanvas() {
       }
     }
     else if (result.mode === 'grid' && result.gridImages && result.gridImages.length > 0) {
-      const saveMedia = (window as any).saveMediaToDB;
       const newNodes: any[] = [];
       const newEdges: any[] = [];
 
       for (let i = 0; i < result.gridImages.length; i++) {
         const imgBase64 = result.gridImages[i];
-        let fileUrl = imgBase64;
-        if (typeof saveMedia === 'function') {
-          const mediaId = `media-asset-grid-${Date.now()}-${i}`;
-          await saveMedia(mediaId, imgBase64);
-          fileUrl = `db://${mediaId}`;
-        }
+        const fileUrl = await UploadService.uploadBase64(
+          imgBase64,
+          `toonflow-grid-slice-${Date.now()}-${i}.png`,
+          'image'
+        );
 
         const row = Math.floor(i / 3);
         const col = i % 3;
@@ -886,7 +884,6 @@ function WorkflowCanvas() {
   // 大 Modal 专属局部状态与音频试听引擎二开
   const [templateLargeTab, setTemplateLargeTab] = useState<'image' | 'video' | 'audio' | 'local_comfyui' | 'runninghub'>('image');
   const [savedTemplates, setSavedTemplates] = useState<WorkflowTemplate[]>([]);
-  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
   const [activeWorkflowIds, setActiveWorkflowIds] = useState<string[]>(() => 
     RunningHubService.getWorkflows().map(w => w.id)
@@ -930,40 +927,13 @@ function WorkflowCanvas() {
     inp.click();
   };
   const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [assetLargeTab, setAssetLargeTab] = useState<'mine' | 'library' | 'virtual' | 'other'>('mine');
-  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
-  const voiceAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const closeLargeModal = () => {
-    if (voiceAudioRef.current) {
-      voiceAudioRef.current.pause();
-      voiceAudioRef.current = null;
-    }
-    setPlayingVoiceId(null);
     setActiveFloatingPopup(null);
     setModalNodeTarget(null);
     setModalMediaType(null);
   };
 
-  const handleToggleVoicePlay = (voiceId: string, audioUrl: string) => {
-    if (playingVoiceId === voiceId) {
-      if (voiceAudioRef.current) {
-        voiceAudioRef.current.pause();
-      }
-      setPlayingVoiceId(null);
-    } else {
-      if (voiceAudioRef.current) {
-        voiceAudioRef.current.pause();
-      }
-      const aud = new Audio(audioUrl);
-      voiceAudioRef.current = aud;
-      aud.play().catch(e => console.log('Audio playback error:', e));
-      setPlayingVoiceId(voiceId);
-      aud.onended = () => {
-        setPlayingVoiceId(null);
-      };
-    }
-  };
   const [templateSubTab, setTemplateSubTab] = useState<'community' | 'mine'>('community');
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
@@ -1016,7 +986,14 @@ function WorkflowCanvas() {
 
         // 物理追加到真实的物理成果历史中！
         const rawUrl = detail.outputUrl || detail.imageUrl || detail.videoUrl || detail.audioUrl;
-        if (rawUrl) {
+        const isNotGeneration = 
+          detail.nodeName?.includes('本地上传') || 
+          detail.nodeName?.includes('宫格切分') || 
+          detail.nodeName?.includes('资产输入') ||
+          detail.nodeName?.includes('文本') ||
+          detail.nodeName?.includes('故事剧本');
+
+        if (rawUrl && !isNotGeneration) {
           let detectedType: 'image' | 'video' | 'audio' = detail.type || 'image';
           const cleanUrl = rawUrl.split('?')[0].toLowerCase();
           if (cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov')) {
@@ -1045,10 +1022,21 @@ function WorkflowCanvas() {
     };
   }, []);
 
-  const [uploadedAssets, setUploadedAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; nodeName: string }>>(() => {
+  const [uploadedAssets, setUploadedAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; nodeName: string; tag?: string }>>(() => {
     try {
-      const saved = localStorage.getItem('toonflow_uploaded_assets');
-      return saved ? JSON.parse(saved) : [];
+      const savedUploaded = localStorage.getItem('toonflow_uploaded_assets');
+      const savedMy = localStorage.getItem('my_saved_assets');
+      const listUploaded = savedUploaded ? JSON.parse(savedUploaded) : [];
+      const listMy = savedMy ? JSON.parse(savedMy) : [];
+      
+      const merged = [...listUploaded, ...listMy];
+      const seen = new Set();
+      return merged.filter(item => {
+        if (!item || !item.id) return false;
+        const duplicate = seen.has(item.id);
+        seen.add(item.id);
+        return !duplicate;
+      });
     } catch (e) {
       console.error("Failed to load uploadedAssets from localStorage:", e);
       return [];
@@ -1056,22 +1044,44 @@ function WorkflowCanvas() {
   });
 
   React.useEffect(() => {
-    localStorage.setItem('toonflow_uploaded_assets', JSON.stringify(uploadedAssets));
+    try {
+      // 🛡️ 物理大图防爆仓清洗算法：巨型 Base64 和临时 Blob URL 不持久化到 5MB 的 LocalStorage，但内存中不影响实时预览
+      const cleaned = uploadedAssets.map(asset => {
+        const isBase64超大 = asset.url && asset.url.startsWith('data:') && asset.url.length > 80000;
+        const isBlob = asset.url && asset.url.startsWith('blob:');
+        
+        if (isBase64超大 || isBlob) {
+          const rawName = asset.nodeName && typeof asset.nodeName === 'string' 
+            ? asset.nodeName.replace('📦 本地上传: ', '') 
+            : '素材';
+          return {
+            ...asset,
+            url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80',
+            nodeName: `⚠️ 本地大素材 (免爆仓托管) - ${rawName}`
+          };
+        }
+        return asset;
+      });
+      localStorage.setItem('toonflow_uploaded_assets', JSON.stringify(cleaned));
+    } catch (e: any) {
+      console.warn("🛡️ [LocalStorage 防爆安全舱] 拦截到大文件写入超限，已自动启用零开销内存托管:", e.message);
+    }
   }, [uploadedAssets]);
+
+  const fetchTemplates = async () => {
+    setTemplatesLoading(true);
+    try {
+      const list = await WorkflowTemplateService.listTemplates();
+      setSavedTemplates(list);
+    } catch (e) {
+      console.error("Failed to load templates:", e);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     if (activeFloatingPopup === 'templates') {
-      const fetchTemplates = async () => {
-        setTemplatesLoading(true);
-        try {
-          const list = await WorkflowTemplateService.listTemplates();
-          setSavedTemplates(list);
-        } catch (e) {
-          console.error("Failed to load templates:", e);
-        } finally {
-          setTemplatesLoading(false);
-        }
-      };
       fetchTemplates();
     }
   }, [activeFloatingPopup]);
@@ -1088,18 +1098,52 @@ function WorkflowCanvas() {
   });
 
   React.useEffect(() => {
-    localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(historyAssets));
+    try {
+      const cleaned = historyAssets.map(asset => {
+        const isBase64超大 = asset.url && asset.url.startsWith('data:') && asset.url.length > 80000;
+        const isBlob = asset.url && asset.url.startsWith('blob:');
+        
+        if (isBase64超大 || isBlob) {
+          return {
+            ...asset,
+            url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80',
+            nodeName: `⚠️ 生成大成果 (免爆仓托管) - ${asset.nodeName || '多媒体'}`
+          };
+        }
+        return asset;
+      });
+      localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(cleaned));
+    } catch (e: any) {
+      console.warn("🛡️ [LocalStorage 历史资产防爆] 拦截到写入超限，已启用无感内存托管:", e.message);
+    }
   }, [historyAssets]);
 
   // 预设素材库（用户上传的）
-  const [libraryAssets, setLibraryAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; name: string }>>(() => {
+  const [libraryAssets, setLibraryAssets] = useState<Array<{ id: string; type: 'image' | 'audio' | 'video'; url: string; name: string; tag?: string }>>(() => {
     try {
       const saved = localStorage.getItem('toonflow_library_assets');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
   React.useEffect(() => {
-    localStorage.setItem('toonflow_library_assets', JSON.stringify(libraryAssets));
+    try {
+      const cleaned = libraryAssets.map(asset => {
+        const isBase64超大 = asset.url && asset.url.startsWith('data:') && asset.url.length > 80000;
+        const isBlob = asset.url && asset.url.startsWith('blob:');
+        
+        if (isBase64超大 || isBlob) {
+          return {
+            ...asset,
+            url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80',
+            name: `⚠️ 本地素材 (免爆仓托管) - ${asset.name || '文件'}`
+          };
+        }
+        return asset;
+      });
+      localStorage.setItem('toonflow_library_assets', JSON.stringify(cleaned));
+    } catch (e: any) {
+      console.warn("🛡️ [LocalStorage 素材库防爆] 拦截到写入超限，已启用无感内存托管:", e.message);
+    }
   }, [libraryAssets]);
 
   // 虚拟人库
@@ -1110,7 +1154,24 @@ function WorkflowCanvas() {
     } catch { return []; }
   });
   React.useEffect(() => {
-    localStorage.setItem('toonflow_virtual_assets', JSON.stringify(virtualAssets));
+    try {
+      const cleaned = virtualAssets.map(asset => {
+        const isBase64超大 = asset.url && asset.url.startsWith('data:') && asset.url.length > 80000;
+        const isBlob = asset.url && asset.url.startsWith('blob:');
+        
+        if (isBase64超大 || isBlob) {
+          return {
+            ...asset,
+            url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80',
+            name: `⚠️ 虚拟人素材 (免爆仓托管) - ${asset.name || '人脸'}`
+          };
+        }
+        return asset;
+      });
+      localStorage.setItem('toonflow_virtual_assets', JSON.stringify(cleaned));
+    } catch (e: any) {
+      console.warn("🛡️ [LocalStorage 虚拟人防爆] 拦截到写入超限，已启用无感内存托管:", e.message);
+    }
   }, [virtualAssets]);
 
   // LORA 其他预设
@@ -1121,7 +1182,24 @@ function WorkflowCanvas() {
     } catch { return []; }
   });
   React.useEffect(() => {
-    localStorage.setItem('toonflow_lora_assets', JSON.stringify(loraAssets));
+    try {
+      const cleaned = loraAssets.map(asset => {
+        const isBase64超大 = asset.url && asset.url.startsWith('data:') && asset.url.length > 80000;
+        const isBlob = asset.url && asset.url.startsWith('blob:');
+        
+        if (isBase64超大 || isBlob) {
+          return {
+            ...asset,
+            url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80',
+            name: `⚠️ LoRA素材 (免爆仓托管) - ${asset.name || '微调'}`
+          };
+        }
+        return asset;
+      });
+      localStorage.setItem('toonflow_lora_assets', JSON.stringify(cleaned));
+    } catch (e: any) {
+      console.warn("🛡️ [LocalStorage LoRA防爆] 拦截到写入超限，已启用无感内存托管:", e.message);
+    }
   }, [loraAssets]);
 
   // 新增二开交互状态
@@ -1131,7 +1209,7 @@ function WorkflowCanvas() {
 
   // 保存资产弹窗状态
   const [isSaveAssetOpen, setIsSaveAssetOpen] = useState(false);
-  const [assetToSave, setAssetToSave] = useState<{ nodeId: string; url: string; nodeName: string } | null>(null);
+  const [assetToSave, setAssetToSave] = useState<{ nodeId: string; url: string; nodeName: string; type?: 'image' | 'video' | 'audio' } | null>(null);
   const [saveAssetName, setSaveAssetName] = useState('');
   const [saveAssetDesc, setSaveAssetDesc] = useState('');
   const [saveAssetTag, setSaveAssetTag] = useState('人物');
@@ -1360,12 +1438,12 @@ function WorkflowCanvas() {
   const addUploadedAsset = useCallback(async (type: 'image' | 'audio' | 'video', url: string, name: string) => {
     let finalUrl = url;
     if (url && !url.startsWith('db://') && url.startsWith('data:')) {
-      const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const saveMedia = (window as any).saveMediaToDB;
-      if (typeof saveMedia === 'function') {
-        await saveMedia(mediaId, url);
-        finalUrl = `db://${mediaId}`;
-      }
+      const ext = type === 'audio' ? 'mp3' : type === 'video' ? 'mp4' : 'png';
+      finalUrl = await UploadService.uploadBase64(
+        url,
+        `toonflow-asset-${Date.now()}.${ext}`,
+        type
+      );
     }
     const newAsset = {
       id: `uploaded-${Date.now()}`,
@@ -1453,49 +1531,421 @@ function WorkflowCanvas() {
       setActiveFloatingPopup(targetTab);
       setModalNodeTarget(nodeTarget || null);
       setModalMediaType(type || null);
-      
-      if (tab === 'assets' && type) {
-        if (type === 'audio') {
-          setAssetLargeTab('virtual'); // 智能派生克隆声线
-        } else {
-          setAssetLargeTab('mine'); // 资产库选入直接显示“我的资产”TAB界面
-        }
-      }
-      if (targetTab === 'templates' && type) {
-        if (type === 'video' || type === 'image' || type === 'audio' || type === 'custom') {
-          setTemplateLargeTab(type as any);
-        }
+    };
+
+    const handleOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { tab } = customEvent.detail || {};
+      setIsSettingsOpen(true);
+      if (tab) {
+        setSettingsActiveTab(tab);
       }
     };
 
     window.addEventListener('open-large-modal', handleOpenLargeModal);
+    window.addEventListener('open-settings', handleOpenSettings);
 
     return () => {
       delete (window as any).spawnLinkedNode;
       delete (window as any).addUploadedAsset;
       window.removeEventListener('open-large-modal', handleOpenLargeModal);
+      window.removeEventListener('open-settings', handleOpenSettings);
     };
   }, [spawnLinkedNode, addUploadedAsset]);
 
-  const handleResourceUpload = (file: File) => {
+
+  // ==================== 物理剥离大弹窗操作画布核心函数 ====================
+  const spawnCustomWorkflowTemplateNode = (template: WorkflowTemplate) => {
+    const capability = template.capability || 'image';
+    const isRH = template.source === 'runninghub';
+    const labelPrefix = isRH ? '[RH] ' : '[CF] ';
+
+    const defaultInputs: Record<string, any> = {
+      prompt: '',
+      activeTab: 'aix',
+      runningHubTemplateId: template.source === 'runninghub' ? (template.workflowRef || '') : '',
+      runningHubWorkflowName: template.name,
+      customTemplate: template,
+      aspectRatio: '1:1',
+      steps: 20,
+      cfg: 7,
+      refImages: []
+    };
+
+    // 初始化默认暴露值
+    (template.paramsSchema || []).forEach(p => {
+      if (p.exposed && p.defaultValue !== undefined) {
+        defaultInputs[`${p.nodeId}_${p.fieldName}`] = p.defaultValue;
+      }
+    });
+
+    if (modalNodeTarget) {
+      // 装载到现有节点内部
+      setNodes(nds => nds.map(n => {
+        if (n.id === modalNodeTarget) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              label: `${labelPrefix}${template.name}`,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                ...defaultInputs
+              }
+            }
+          };
+        }
+        return n;
+      }));
+      closeLargeModal();
+      alert(`🎉 成功将自定义工作流【${template.name}】装载到当前节点！`);
+      return;
+    }
+
+    // 根据能力特征映射为原生生图、视频或声音节点
+    const type = capability === 'video' ? 'video-fusion' : (capability === 'audio' ? 'tts-service' : 'image-service');
+    const id = `${type}-${Date.now()}`;
+    
+    let viewportCenter = { x: 300, y: 300 };
+    try {
+      if (typeof screenToFlowPosition === 'function') {
+        viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      }
+    } catch (err) {}
+    const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+
+    const newNode = {
+      id,
+      type,
+      position: safePos,
+      width: 180,
+      height: 180,
+      data: {
+        label: `${labelPrefix}${template.name}`,
+        progress: 0,
+        inputs: defaultInputs,
+        outputs: {}
+      }
+    };
+
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+    
+    setTimeout(() => {
+      setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+    }, 50);
+
+    closeLargeModal();
+    alert(`🎉 成功将自定义工作流【${template.name}】添加到画布！`);
+  };
+
+  const spawnWorkflowNode = (wfId: string, wfName: string, type: 'image' | 'video') => {
+    if (modalNodeTarget) {
+      // 添加到现有节点内部
+      setNodes(nds => nds.map(n => {
+        if (n.id === modalNodeTarget) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                activeTab: 'aix',
+                runningHubTemplateId: wfId,
+                runningHubWorkflowName: wfName
+              }
+            }
+          };
+        }
+        return n;
+      }));
+      closeLargeModal();
+      alert(`🎉 成功将云端工作流【${wfName}】添加到当前节点！`);
+      return;
+    }
+
+    const id = `${type}-service-${Date.now()}`;
+    let viewportCenter = { x: 300, y: 300 };
+    try {
+      if (typeof screenToFlowPosition === 'function') {
+        viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      }
+    } catch (err) {}
+    const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+    
+    const newNode = {
+      id,
+      type: type === 'image' ? 'image-service' : 'video-fusion',
+      position: safePos,
+      width: 300,
+      height: 380,
+      data: {
+        label: `🎬 [工作流] ${wfName}`,
+        progress: 0,
+        inputs: {
+          prompt: `已添加: ${wfName}`,
+          model: type === 'image' ? 'flux-schnell' : 'wan-2.1',
+          workflowPreset: wfId, 
+        },
+        outputs: {}
+      }
+    };
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+    
+    setTimeout(() => {
+      setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+    }, 50);
+
+    closeLargeModal();
+    alert(`🎉 成功将【${wfName}】工作流节点添加到画布！可选中该节点在高级设置中直接运转。`);
+  };
+
+  const handleCustomWorkflowJsonUpload = (content: string, filename: string) => {
+    try {
+      JSON.parse(content); 
+      const id = `custom-workflow-${Date.now()}`;
+      let viewportCenter = { x: 300, y: 300 };
+      try {
+        if (typeof screenToFlowPosition === 'function') {
+          viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+        }
+      } catch (err) {}
+      const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+      
+      const newNode = {
+        id,
+        type: 'custom-workflow-node',
+        position: safePos,
+        width: 320,
+        height: 240,
+        data: {
+          label: `🔌 [自定义] ${filename.replace('.json', '')}`,
+          progress: 0,
+          inputs: {
+            workflowJson: content,
+            workflowName: filename.replace('.json', '')
+          },
+          outputs: {}
+        }
+      };
+      setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+      
+      setTimeout(() => {
+        setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+      }, 50);
+
+      closeLargeModal();
+      alert(`🎉 恭喜！ComfyUI 工作流 [${filename}] 解析成功！已在画布中派生了自定义工作流节点！`);
+    } catch (e) {
+      alert('⚠️ 解析失败！请输入合法的 ComfyUI JSON 工作流文件。');
+    }
+  };
+
+  const handleInjectLibraryAsset = (url: string, name: string) => {
+    let fileType: 'image' | 'video' | 'audio' = 'image';
+    const lowerUrl = url.toLowerCase();
+    const lowerName = name.toLowerCase();
+    if (lowerUrl.endsWith('.mp3') || lowerUrl.endsWith('.wav') || lowerName.includes('🎙️') || lowerName.includes('音频') || lowerName.includes('mp3') || lowerName.includes('wav')) {
+      fileType = 'audio';
+    } else if (lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.webm') || lowerName.includes('🎬') || lowerName.includes('视频') || lowerName.includes('mp4') || lowerName.includes('webm')) {
+      fileType = 'video';
+    }
+
+    if (modalNodeTarget) {
+      setNodes(nds => nds.map(n => {
+        if (n.id === modalNodeTarget) {
+          const updates: any = {};
+          if (n.type === 'image-service') {
+            const prevRefImages = n.data.inputs?.refImages || (n.data.inputs?.faceRef ? [n.data.inputs.faceRef] : []);
+            updates.refImages = [...prevRefImages, url];
+            updates.faceRef = url;
+          } else if (n.type === 'video-fusion') {
+            updates.refImage = url;
+            updates.image = url;
+          } else if (n.type === 'tts-service') {
+            updates.refAudio = url;
+          }
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                ...updates
+              }
+            }
+          };
+        }
+        return n;
+      }));
+      
+      spawnLinkedNode(modalNodeTarget, 'upload-node', 'left', {
+        fileType,
+        fileUrl: url,
+        fileName: name.replace(/[🖼️🎙️🎬📦]/g, '').trim()
+      });
+
+      closeLargeModal();
+      const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
+      alert(`🎉 成功将素材【${name}】添加到当前节点，并在其左侧派生了直连 [${typeLabel} 资产输入] 节点！`);
+      return;
+    }
+
+    const id = `upload-node-${Date.now()}`;
+    let viewportCenter = { x: 300, y: 300 };
+    try {
+      if (typeof screenToFlowPosition === 'function') {
+        viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      }
+    } catch (err) {}
+    const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+    const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
+    const ext = fileType === 'video' ? 'mp4' : (fileType === 'audio' ? 'mp3' : 'jpg');
+    const cleanName = name.replace(/[🖼️🎙️🎬📦]/g, '').trim();
+
+    const newNode = {
+      id,
+      type: 'upload-node',
+      position: safePos,
+      width: 300,
+      height: 260,
+      data: {
+        label: `${typeLabel} 资产输入`,
+        progress: 100,
+        inputs: {
+          fileUrl: url,
+          fileName: `${cleanName}.${ext}`,
+          fileType: fileType
+        },
+        outputs: {
+          output: url,
+          fileUrl: url
+        }
+      }
+    };
+
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+    
+    setTimeout(() => {
+      setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+    }, 50);
+
+    closeLargeModal();
+    alert(`🎉 成功从素材库中派生了 [${typeLabel} 资产输入] 节点！`);
+  };
+
+  const handleCloneVirtualVoice = (voiceName: string, voiceUrl: string) => {
+    const id = `tts-service-${Date.now()}`;
+    let viewportCenter = { x: 300, y: 300 };
+    try {
+      if (typeof screenToFlowPosition === 'function') {
+        viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      }
+    } catch (err) {}
+    const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
+    const newNode = {
+      id,
+      type: 'tts-service',
+      position: safePos,
+      width: 280,
+      height: 220,
+      data: {
+        label: `🎙️ 声音克隆: ${voiceName}`,
+        progress: 100,
+        inputs: {
+          text: '智能声音克隆配音中...',
+          voicePreset: voiceName,
+          voiceUrl: voiceUrl
+        },
+        outputs: {
+          audio: voiceUrl,
+          output: voiceUrl
+        }
+      }
+    };
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
+    
+    setTimeout(() => {
+      setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+    }, 50);
+
+    closeLargeModal();
+    alert(`🎉 【${voiceName}】声线已一键物理克隆！并在画布中央生成了智能配音节点！`);
+  };
+
+  const handleResourceUpload = (file: File, activeTab?: string) => {
     console.log("handleResourceUpload triggered for file:", file.name, file.type);
     const reader = new FileReader();
     reader.onload = async () => {
       if (typeof reader.result === 'string') {
-        const fileType = file.type.startsWith('image/') 
-          ? 'image' 
-          : file.type.startsWith('audio/') 
-            ? 'audio' 
-            : file.type.startsWith('video/') 
-              ? 'video' 
-              : 'image';
+        // 智能自愈：利用 Magic Bytes (魔术字节) 二进制指纹物理探测无后缀或错误 MIME（如 audio/mpeg）的视频文件
+        const isVideoByMagic = await new Promise<boolean>((resolve) => {
+          const blob = file.slice(0, 256);
+          const r = new FileReader();
+          r.onload = () => {
+            try {
+              const arr = new Uint8Array(r.result as ArrayBuffer);
+              if (arr.length < 12) { resolve(false); return; }
+              let hasFtyp = false;
+              for (let i = 0; i <= arr.length - 4; i++) {
+                if (arr[i] === 0x66 && arr[i+1] === 0x74 && arr[i+2] === 0x79 && arr[i+3] === 0x70) {
+                  hasFtyp = true;
+                  break;
+                }
+              }
+              const isWebM = arr[0] === 0x1A && arr[1] === 0x45 && arr[2] === 0xDF && arr[3] === 0xA3;
+              const isAvi = (arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46) &&
+                            (arr[8] === 0x41 && arr[9] === 0x56 && arr[10] === 0x49 && arr[11] === 0x20);
+              resolve(hasFtyp || isWebM || isAvi);
+            } catch (e) {
+              resolve(false);
+            }
+          };
+          r.onerror = () => resolve(false);
+          r.readAsArrayBuffer(blob);
+        });
+
+        const lowerName = file.name.toLowerCase();
+        let fileType: 'image' | 'audio' | 'video' = 'image';
         
-        const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const saveMedia = (window as any).saveMediaToDB;
-        let finalUrl = reader.result;
-        if (typeof saveMedia === 'function') {
-          await saveMedia(mediaId, reader.result);
-          finalUrl = `db://${mediaId}`;
+        if (isVideoByMagic) {
+          fileType = 'video';
+        } else if (lowerName.endsWith('.mp4') || lowerName.endsWith('.webm') || lowerName.endsWith('.mov') || lowerName.endsWith('.mkv') || lowerName.endsWith('.avi')) {
+          fileType = 'video';
+        } else if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a') || lowerName.endsWith('.flac') || lowerName.endsWith('.aac') || lowerName.endsWith('.ogg')) {
+          fileType = 'audio';
+        } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.gif') || lowerName.endsWith('.webp') || lowerName.endsWith('.bmp')) {
+          fileType = 'image';
+        } else {
+          // 自愈纠偏：Windows 注册表可能将 .mp4 错误关联为 audio/mp4 等导致浏览器错判为 audio
+          if (file.type === 'audio/mp4') {
+            fileType = 'video';
+          } else {
+            fileType = file.type.startsWith('image/') 
+              ? 'image' 
+              : file.type.startsWith('audio/') 
+                ? 'audio' 
+                : file.type.startsWith('video/') 
+                  ? 'video' 
+                  : 'image';
+          }
+        }
+        
+        const finalUrl = await UploadService.uploadBase64(
+          reader.result,
+          `toonflow-asset-${Date.now()}-${file.name}`,
+          fileType
+        );
+
+        const targetTab = activeTab || 'mine';
+        let initialTag = '其他';
+        if (targetTab === 'mine') {
+          if (fileType === 'video') initialTag = '视频';
+          else if (fileType === 'audio') initialTag = '音频';
+          else initialTag = '场景';
+        } else if (targetTab === 'library') {
+          if (fileType === 'video') initialTag = '视频';
+          else if (fileType === 'audio') initialTag = '音效';
+          else initialTag = '场景';
         }
 
         const newAsset = {
@@ -1503,24 +1953,22 @@ function WorkflowCanvas() {
           type: fileType as any,
           url: finalUrl,
           nodeName: `📦 本地上传: ${file.name}`,
-          tag: '全部'
+          tag: initialTag
         };
         
         // 根据当前 tab 保存到对应的库
-        switch (assetLargeTab) {
+        switch (targetTab) {
           case 'mine':
             setUploadedAssets(prev => [newAsset, ...prev]);
-            // 只有「我的资产」上传后自动创建节点
-            createUploadNode(file.name, fileType, finalUrl);
             break;
           case 'library':
-            setLibraryAssets(prev => [...prev, { id: `lib-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            setLibraryAssets(prev => [{ id: `lib-${Date.now()}`, type: fileType, url: finalUrl, name: file.name, tag: initialTag }, ...prev]);
             break;
           case 'virtual':
-            setVirtualAssets(prev => [...prev, { id: `virt-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            setVirtualAssets(prev => [{ id: `virt-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }, ...prev]);
             break;
           case 'other':
-            setLoraAssets(prev => [...prev, { id: `lora-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }]);
+            setLoraAssets(prev => [{ id: `lora-${Date.now()}`, type: fileType, url: finalUrl, name: file.name }, ...prev]);
             break;
         }
       }
@@ -1634,18 +2082,52 @@ function WorkflowCanvas() {
     [screenToFlowPosition, setNodes, nodes, findNonOverlappingPosition]
   );
 
+  // 挂载高解耦节点组合与拆解层级 Hook (对标 n8n 分组)
+  const { handleCreateGroupFromSelected, handleUngroup } = useGroupLogic(nodes, setNodes);
+
   const handleNodeContextMenuAction = (actionId: string, nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
     switch (actionId) {
+      case 'group_selected': {
+        handleCreateGroupFromSelected();
+        break;
+      }
+      case 'ungroup': {
+        handleUngroup(nodeId);
+        break;
+      }
       case 'create_asset': {
         const nodeData = node.data as any;
-        const mediaUrl = nodeData?.outputs?.image || nodeData?.outputs?.audio || nodeData?.outputs?.video || nodeData?.outputUrl || '';
+        const mediaUrl = 
+          nodeData?.outputs?.image || 
+          nodeData?.outputs?.video || 
+          nodeData?.outputs?.audio || 
+          nodeData?.outputs?.output || 
+          nodeData?.outputUrl || 
+          nodeData?.inputs?.fileUrl || 
+          '';
+        
+        let detectedType: 'image' | 'video' | 'audio' = 'image';
+        if (node.type === 'video-fusion' || nodeData?.fileType === 'video' || nodeData?.outputs?.fileType === 'video') {
+          detectedType = 'video';
+        } else if (node.type === 'tts-service' || nodeData?.fileType === 'audio' || nodeData?.outputs?.fileType === 'audio') {
+          detectedType = 'audio';
+        } else if (mediaUrl) {
+          const cleanUrl = mediaUrl.split('?')[0].toLowerCase();
+          if (cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov')) {
+            detectedType = 'video';
+          } else if (cleanUrl.endsWith('.mp3') || cleanUrl.endsWith('.wav') || cleanUrl.endsWith('.ogg')) {
+            detectedType = 'audio';
+          }
+        }
+
         setAssetToSave({
           nodeId: node.id,
           url: mediaUrl,
-          nodeName: nodeData.label || '新提取资产'
+          nodeName: nodeData.label || '新提取资产',
+          type: detectedType
         });
         const now = new Date();
         const formattedDate = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -1713,6 +2195,19 @@ function WorkflowCanvas() {
       alert('请输入资产名称！');
       return;
     }
+    
+    let detectedType = assetToSave?.type;
+    if (!detectedType) {
+      const url = assetToSave?.url || '';
+      if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov')) {
+        detectedType = 'video';
+      } else if (url.includes('.mp3') || url.includes('.wav') || url.includes('.ogg')) {
+        detectedType = 'audio';
+      } else {
+        detectedType = 'image';
+      }
+    }
+
     const newAsset = {
       id: `saved-${Date.now()}`,
       name: saveAssetName.trim(),
@@ -1720,12 +2215,9 @@ function WorkflowCanvas() {
       tag: saveAssetTag,
       url: assetToSave?.url || '',
       nodeName: assetToSave?.nodeName || '我的资产',
-      type: assetToSave?.url?.includes('.mp4') ? 'video' : (assetToSave?.url?.includes('.mp3') || assetToSave?.url?.includes('.wav') ? 'audio' : 'image')
+      type: detectedType
     };
-    const saved = localStorage.getItem('my_saved_assets');
-    const list = saved ? JSON.parse(saved) : [];
-    list.unshift(newAsset);
-    localStorage.setItem('my_saved_assets', JSON.stringify(list));
+    setUploadedAssets(prev => [newAsset as any, ...prev]);
     setIsSaveAssetOpen(false);
     alert(`🎉 恭喜！资产 [${saveAssetName}] 已成功保存到“我的资产”中，随时可以在左侧“📦 资产”面板进行筛选与一键灌装！`);
   };
@@ -1778,20 +2270,6 @@ function WorkflowCanvas() {
     const saved = localStorage.getItem('my_saved_assets');
     const localSaved = saved ? JSON.parse(saved) : [];
     mineAssets.push(...localSaved);
-
-    uploadedAssets.forEach(ua => {
-      let tag = '其他';
-      if (ua.type === 'audio') tag = '音频';
-      if (ua.type === 'video') tag = '视频';
-      if (ua.type === 'image') tag = '人物';
-      mineAssets.push({
-        id: ua.id,
-        type: ua.type,
-        url: ua.url,
-        nodeName: ua.nodeName,
-        tag: tag
-      });
-    });
 
     nodes.forEach(node => {
       const nodeData = node.data as any;
@@ -2850,7 +3328,7 @@ function WorkflowCanvas() {
       'tts-service': '🗣️ 声音克隆',
       'video-fusion': '📹 视频生成',
       'upload-node': '📦 本地上传',
-      'grid-splitter': '✂️ 宫格切分工具',
+      'grid-splitter': '⊞ 宫格排版合成',
       'loop-node': '🔄 批量循环迭代'
     };
 
@@ -2871,7 +3349,7 @@ function WorkflowCanvas() {
       'tts-service': { width: 320, height: 360 },
       'video-fusion': { width: 320, height: 480 },
       'upload-node': { width: 300, height: 260 },
-      'grid-splitter': { width: 300, height: 260 },
+      'grid-splitter': { width: 200, height: 200 },
       'loop-node': { width: 180, height: 180 }
     };
     const size = sizeMap[type] || { width: 320, height: 240 };
@@ -3232,8 +3710,8 @@ function WorkflowCanvas() {
       dataInputs = { providerId: 'volcengine', model: 'vidu-high-speed', prompt: '', imageRef: '', audioUrl: '' };
       dataOutputs = { video: '', output: '' };
     } else if (targetType === 'grid-splitter') {
-      label = '⊞ 智能切片';
-      dataInputs = { cols: 2, rows: 2, gap: 0 };
+      label = '⊞ 宫格排版合成';
+      dataInputs = { gridType: '2x2', gap: 8, bgColor: '#0f172a', borderRadius: 8, outputSize: 2048, localImages: {} };
       dataOutputs = { output: '' };
     } else if (targetType === 'loop-node') {
       label = '🔄 循环迭代';
@@ -3766,6 +4244,87 @@ function WorkflowCanvas() {
     alert('🔌 导出 n8n 功能暂未实现，正在研发中...');
   };
 
+  // ============ 画布管理回调 ============
+  const handleNewCanvas = async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/v1/canvases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `新画布 ${Date.now()}` })
+      });
+      const data = await res.json();
+      if (data.canvas) {
+        setCurrentCanvasId(data.canvas.id);
+        setNodes([]);
+        setEdges([]);
+        setNodes([]);
+        setEdges([]);
+        alert('已创建新画布');
+      }
+    } catch (err) {
+      console.error('创建画布失败:', err);
+      alert('创建画布失败');
+    }
+  };
+
+  const handleSwitchCanvas = (id: string, canvas: any) => {
+    setCurrentCanvasId(id);
+    if (canvas.nodes) setNodes(canvas.nodes);
+    if (canvas.edges) setEdges(canvas.edges);
+    setIsCanvasManagerOpen(false);
+  };
+
+  const handleRenameCanvas = async (id: string, currentName: string) => {
+    const newName = prompt('请输入新名称:', currentName);
+    if (!newName || newName === currentName) return;
+    try {
+      await fetch(`http://localhost:4000/api/v1/canvases/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      });
+    } catch (err) {
+      console.error('重命名失败:', err);
+    }
+  };
+
+  const handleDeleteCanvas = async (id: string) => {
+    if (!confirm('确定删除该画布吗？')) return;
+    try {
+      await fetch(`http://localhost:4000/api/v1/canvases/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('删除画布失败:', err);
+    }
+  };
+
+  const handleRestoreCanvas = async (id: string) => {
+    try {
+      await fetch(`http://localhost:4000/api/v1/canvases/${id}/restore`, { method: 'POST' });
+      alert('已还原画布');
+    } catch (err) {
+      console.error('还原失败:', err);
+    }
+  };
+
+  const handlePermanentDeleteCanvas = async (id: string) => {
+    try {
+      await fetch(`http://localhost:4000/api/v1/canvases/${id}/permanent`, { method: 'DELETE' });
+      alert('已彻底删除');
+    } catch (err) {
+      console.error('彻底删除失败:', err);
+    }
+  };
+
+  const handleShowSnapshots = (canvasId: string) => {
+    setSnapshotCanvasId(canvasId);
+    setIsCanvasManagerOpen(false);
+  };
+
+  const handleSnapshotRollback = (rollbackNodes: any[], rollbackEdges: any[]) => {
+    setNodes(rollbackNodes);
+    setEdges(rollbackEdges);
+  };
+
   return (
     <div style={{ 
       width: '100vw', 
@@ -3807,6 +4366,25 @@ function WorkflowCanvas() {
         </div>
         
         <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            className="glass-card" 
+            onClick={() => setIsCanvasManagerOpen(true)}
+            style={{ 
+              padding: '6px 14px', 
+              fontSize: '12px', 
+              borderRadius: '8px',
+              border: '1px solid rgba(168, 85, 247, 0.4)',
+              background: 'rgba(168, 85, 247, 0.1)',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 500,
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)'}
+          >
+            📋 画布列表
+          </button>
           <button 
             className="glass-card" 
             onClick={() => setIsSettingsOpen(true)}
@@ -4393,23 +4971,19 @@ function WorkflowCanvas() {
 
                 {/* 大字体节点分类卡片 */}
                 {[
-                  { type: 'prompt-source', emoji: '📝', label: '文本', desc: '剧本故事原始文字输入源，连接 LLM 分镜专家节点', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' },
+                  { type: 'prompt-source', emoji: '📝', label: '故事剧本源', desc: '剧本故事原始文字输入源，连接 LLM 分镜专家节点', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' },
                   { type: 'image-service', emoji: '🎨', label: '图像', desc: 'Flux / SD / MiniMax 文生图，支持角色面部参考', color: '#10b981', grad: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.03))' },
                   { type: 'video-fusion', emoji: '🎥', label: '视频生成', desc: 'Vidu / Wan / FramePack 视频合成，支持音视频融合', color: '#f59e0b', grad: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.03))' },
                   { type: 'tts-service',  emoji: '🔊', label: '音频', desc: '声音克隆与旁白配音，极速锁定人物音色', color: '#0ea5e9', grad: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(14,165,233,0.03))' },
-                  { type: 'llm-service',   emoji: '🎬', label: '剧本', desc: '大模型分镜专家：将剧本智能拆解为镜头 Prompt', color: '#ec4899', grad: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(236,72,153,0.03))' },
+                  { type: 'llm-service',   emoji: '🎬', label: '剧本专家', desc: '大模型分镜专家：将剧本智能拆解为镜头 Prompt', color: '#ec4899', grad: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(236,72,153,0.03))' },
                   { type: 'loop-node',     emoji: '🔄', label: '循环迭代', desc: '批量循环发生器：将文本/分镜列表并发或顺序循环分发，驱动批量生图/视频/音频', color: '#f43f5e', grad: 'linear-gradient(135deg, rgba(244,63,94,0.15), rgba(244,63,94,0.03))' },
                   { type: 'upload-node',   emoji: '📦', label: '本地上传', desc: '本地多媒体资源上传节点，供画布各处调用', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' },
-                  { type: 'grid-splitter', emoji: '✂️', label: '宫格切分', desc: '智能九宫格切分工具：智能拆分生成图像与预置素材', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' }
+                  { type: 'grid-splitter', emoji: '⊞', label: '宫格合成', desc: '智能排版拼接拼图工具：将多张图片合成为一张大图', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' }
                 ].map((item) => (
                   <div
                     key={item.type}
                     onClick={() => {
-                      if (item.type === 'upload-node') {
-                        fileInputRef.current?.click();
-                      } else {
-                        handleAddAgentNode(item.type as any);
-                      }
+                      handleAddAgentNode(item.type as any);
                       setActiveFloatingPopup(null);
                     }}
                     className="glass-card"
@@ -4585,2107 +5159,57 @@ function WorkflowCanvas() {
         </aside>
       )}
 
+      
       {/* 🔮 Toonflow Center Core Premium Large Modal (85vw * 80vh) */}
-      {activeFloatingPopup && ['templates', 'assets', 'history'].includes(activeFloatingPopup) && (() => {
-        
-        // 1. 添加工作流节点到画布或装载到现有节点
-        const spawnCustomWorkflowTemplateNode = (template: WorkflowTemplate) => {
-          const capability = template.capability || 'image';
-          const isRH = template.source === 'runninghub';
-          const labelPrefix = isRH ? '[RH] ' : '[CF] ';
-
-          const defaultInputs: Record<string, any> = {
-            prompt: '',
-            activeTab: 'aix',
-            runningHubTemplateId: template.source === 'runninghub' ? (template.workflowRef || '') : '',
-            runningHubWorkflowName: template.name,
-            customTemplate: template,
-            aspectRatio: '1:1',
-            steps: 20,
-            cfg: 7,
-            refImages: []
-          };
-
-          // 初始化默认暴露值
-          (template.paramsSchema || []).forEach(p => {
-            if (p.exposed && p.defaultValue !== undefined) {
-              defaultInputs[`${p.nodeId}_${p.fieldName}`] = p.defaultValue;
-            }
-          });
-
-          if (modalNodeTarget) {
-            // 装载到现有节点内部
-            setNodes(nds => nds.map(n => {
-              if (n.id === modalNodeTarget) {
-                return {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    label: `${labelPrefix}${template.name}`,
-                    inputs: {
-                      ...((n.data as any)?.inputs || {}),
-                      ...defaultInputs
-                    }
-                  }
-                };
-              }
-              return n;
-            }));
-            closeLargeModal();
-            alert(`🎉 成功将自定义工作流【${template.name}】装载到当前节点！`);
-            return;
-          }
-
-          // 根据能力特征映射为原生生图、视频或声音节点
-          const type = capability === 'video' ? 'video-fusion' : (capability === 'audio' ? 'tts-service' : 'image-service');
-          const id = `${type}-${Date.now()}`;
-          
-          let viewportCenter = { x: 300, y: 300 };
-          try {
-            if (typeof screenToFlowPosition === 'function') {
-              viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-            }
-          } catch (err) {}
-          const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-
-          const newNode = {
-            id,
-            type,
-            position: safePos,
-            width: 180,
-            height: 180,
-            data: {
-              label: `${labelPrefix}${template.name}`,
-              progress: 0,
-              inputs: defaultInputs,
-              outputs: {}
-            }
-          };
-
-          setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-          
-          setTimeout(() => {
-            setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
-          }, 50);
-
-          closeLargeModal();
-          alert(`🎉 成功将自定义工作流【${template.name}】添加到画布！`);
-        };
-
-  const spawnWorkflowNode = (wfId: string, wfName: string, type: 'image' | 'video') => {
-          if (modalNodeTarget) {
-            // 添加到现有节点内部
-            setNodes(nds => nds.map(n => {
-              if (n.id === modalNodeTarget) {
-                return {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    inputs: {
-                      ...((n.data as any)?.inputs || {}),
-                      activeTab: 'aix',
-                      runningHubTemplateId: wfId,
-                      runningHubWorkflowName: wfName
-                    }
-                  }
-                };
-              }
-              return n;
-            }));
-            closeLargeModal();
-            alert(`🎉 成功将云端工作流【${wfName}】添加到当前节点！`);
-            return;
-          }
-
-          const id = `${type}-service-${Date.now()}`;
-          let viewportCenter = { x: 300, y: 300 };
-          try {
-            if (typeof screenToFlowPosition === 'function') {
-              viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-            }
-          } catch (err) {}
-          const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-          
-          const newNode = {
-            id,
-            type: type === 'image' ? 'image-service' : 'video-fusion',
-            position: safePos,
-            width: 300,
-            height: 380,
-            data: {
-              label: `🎬 [工作流] ${wfName}`,
-              progress: 0,
-              inputs: {
-                prompt: `已添加: ${wfName}`,
-                model: type === 'image' ? 'flux-schnell' : 'wan-2.1',
-                workflowPreset: wfId, 
-              },
-              outputs: {}
-            }
-          };
-          setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-          
-          setTimeout(() => {
-            setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
-          }, 50);
-
-          closeLargeModal();
-          alert(`🎉 成功将【${wfName}】工作流节点添加到画布！可选中该节点在高级设置中直接运转。`);
-        };
-
-        // 2. 自定义 ComfyUI JSON 工作流派生核心联动
-        const handleCustomWorkflowJsonUpload = (content: string, filename: string) => {
-          try {
-            JSON.parse(content); 
-            const id = `custom-workflow-${Date.now()}`;
-            let viewportCenter = { x: 300, y: 300 };
-            try {
-              if (typeof screenToFlowPosition === 'function') {
-                viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-              }
-            } catch (err) {}
-            const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-            
-            const newNode = {
-              id,
-              type: 'custom-workflow',
-              position: safePos,
-              width: 320,
-              height: 280,
-              data: {
-                label: `⚙️ 自定义: ${filename.replace('.json', '')}`,
-                progress: 0,
-                inputs: {
-                  jsonContent: content,
-                },
-                outputs: {}
-              }
-            };
-            setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-            
-            setTimeout(() => {
-              setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
-            }, 50);
-
-            closeLargeModal();
-            alert(`🎉 恭喜！ComfyUI 工作流 [${filename}] 解析成功！已在画布中派生了自定义工作流节点！`);
-          } catch (e) {
-            alert('⚠️ 解析失败！请输入合法的 ComfyUI JSON 工作流文件。');
-          }
-        };
-
-        // 3. 预设素材库一键添加到画布与防重叠派生 Upload 节点
-        const handleInjectLibraryAsset = (url: string, name: string) => {
-          // 智能提取资产的多媒体类型
-          let fileType: 'image' | 'video' | 'audio' = 'image';
-          const lowerUrl = url.toLowerCase();
-          const lowerName = name.toLowerCase();
-          if (lowerUrl.endsWith('.mp3') || lowerUrl.endsWith('.wav') || lowerName.includes('🎙️') || lowerName.includes('音频') || lowerName.includes('mp3') || lowerName.includes('wav')) {
-            fileType = 'audio';
-          } else if (lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.webm') || lowerName.includes('🎬') || lowerName.includes('视频') || lowerName.includes('mp4') || lowerName.includes('webm')) {
-            fileType = 'video';
-          }
-
-          if (modalNodeTarget) {
-            setNodes(nds => nds.map(n => {
-              if (n.id === modalNodeTarget) {
-                const updates: any = {};
-                if (n.type === 'image-service') {
-                  const prevRefImages = n.data.inputs?.refImages || (n.data.inputs?.faceRef ? [n.data.inputs.faceRef] : []);
-                  updates.refImages = [...prevRefImages, url];
-                  updates.faceRef = url;
-                } else if (n.type === 'video-fusion') {
-                  updates.refImage = url;
-                  updates.image = url;
-                } else if (n.type === 'tts-service') {
-                  updates.refAudio = url;
-                }
-                return {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    inputs: {
-                      ...((n.data as any)?.inputs || {}),
-                      ...updates
-                    }
-                  }
-                };
-              }
-              return n;
-            }));
-            
-            spawnLinkedNode(modalNodeTarget, 'upload-node', 'left', {
-              fileType,
-              fileUrl: url,
-              fileName: name.replace(/[🖼️🎙️🎬📦]/g, '').trim()
+      <ToonflowCenterModal
+        isOpen={activeFloatingPopup ? ['templates', 'assets', 'history'].includes(activeFloatingPopup) : false}
+        activeFloatingPopup={activeFloatingPopup ? (['templates', 'assets', 'history'].includes(activeFloatingPopup) ? (activeFloatingPopup as any) : null) : null}
+        onClose={closeLargeModal}
+        modalNodeTarget={modalNodeTarget}
+        modalMediaType={modalMediaType}
+        savedTemplates={savedTemplates}
+        templatesLoading={templatesLoading}
+        onRefreshTemplates={fetchTemplates}
+        onSpawnCustomWorkflow={spawnCustomWorkflowTemplateNode}
+        onSpawnWorkflow={spawnWorkflowNode}
+        onCustomJsonUpload={handleCustomWorkflowJsonUpload}
+        uploadedAssets={uploadedAssets}
+        onResourceUpload={handleResourceUpload}
+        onDeleteAsset={(id: string) => {
+          setUploadedAssets(prev => prev.filter(ua => ua.id !== id));
+        }}
+        onInjectAsset={handleInjectAsset}
+        onInjectLibraryAsset={handleInjectLibraryAsset}
+        onCloneVirtualVoice={handleCloneVirtualVoice}
+        libraryAssets={libraryAssets}
+        onDeleteLibraryAsset={(id: string) => setLibraryAssets(prev => prev.filter(a => a.id !== id))}
+        onInjectLibraryAssetDirectly={handleInjectLibraryAsset}
+        virtualAssets={virtualAssets}
+        onDeleteVirtualAsset={(id: string) => {
+          const list = virtualAssets.filter(a => a.id !== id);
+          localStorage.setItem('toonflow_virtual_assets', JSON.stringify(list));
+          setVirtualAssets(list);
+        }}
+        loraAssets={loraAssets}
+        onDeleteLoraAsset={(id: string) => {
+          const list = loraAssets.filter(a => a.id !== id);
+          localStorage.setItem('toonflow_lora_assets', JSON.stringify(list));
+          setLoraAssets(list);
+        }}
+        historyItems={historyAssets}
+        downloadFileDirectly={downloadFileDirectly}
+        setFullScreenMedia={(media: any) => {
+          if (media) {
+            setFullScreenMedia({
+              url: media.url,
+              type: media.type as any,
+              nodeId: undefined
             });
-
-            closeLargeModal();
-            const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
-            alert(`🎉 成功将素材【${name}】添加到当前节点，并在其左侧派生了直连 [${typeLabel} 资产输入] 节点！`);
-            return;
+          } else {
+            setFullScreenMedia(null);
           }
-
-          const id = `upload-node-${Date.now()}`;
-          let viewportCenter = { x: 300, y: 300 };
-          try {
-            if (typeof screenToFlowPosition === 'function') {
-              viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-            }
-          } catch (err) {}
-          const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-          const typeLabel = fileType === 'video' ? '🎬 视频' : (fileType === 'audio' ? '🎵 音频' : '🖼️ 图像');
-          const ext = fileType === 'video' ? 'mp4' : (fileType === 'audio' ? 'mp3' : 'jpg');
-          const cleanName = name.replace(/[🖼️🎙️🎬📦]/g, '').trim();
-
-          const newNode = {
-            id,
-            type: 'upload-node',
-            position: safePos,
-            width: 300,
-            height: 260,
-            data: {
-              label: `${typeLabel} 资产输入`,
-              progress: 100,
-              inputs: {
-                fileType,
-                fileUrl: url,
-                fileName: `${cleanName}.${ext}`
-              },
-              outputs: {
-                output: url,
-                fileType
-              }
-            }
-          };
-          setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-          
-          setTimeout(() => {
-            setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
-          }, 50);
-
-          closeLargeModal();
-          alert(`🎉 成功将预设素材 [${name}] 添加到画布！`);
-        };
-
-        // 4. 一键克隆声线派生 TTS 音频配音节点
-        const handleCloneVirtualVoice = (voiceName: string, voiceUrl: string) => {
-          const id = `tts-service-${Date.now()}`;
-          let viewportCenter = { x: 300, y: 300 };
-          try {
-            if (typeof screenToFlowPosition === 'function') {
-              viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-            }
-          } catch (err) {}
-          const safePos = findNonOverlappingPosition(nodes, viewportCenter.x, viewportCenter.y);
-          const newNode = {
-            id,
-            type: 'tts-service',
-            position: safePos,
-            width: 280,
-            height: 220,
-            data: {
-              label: `🎙️ 声音克隆: ${voiceName}`,
-              progress: 100,
-              inputs: {
-                text: '智能声音克隆配音中...',
-                voicePreset: voiceName,
-                voiceUrl: voiceUrl
-              },
-              outputs: {
-                audio: voiceUrl,
-                output: voiceUrl
-              }
-            }
-          };
-          setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), { ...newNode, selected: true }]);
-          
-          setTimeout(() => {
-            setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
-          }, 50);
-
-          closeLargeModal();
-          alert(`🎉 【${voiceName}】声线已一键物理克隆！并在画布中央生成了智能配音节点！`);
-        };
-
-        return (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(5, 7, 12, 0.65)',
-              backdropFilter: 'blur(12px)',
-              zIndex: 9999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              animation: 'fadeInLargeModal 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-            onClick={closeLargeModal}
-          >
-            <style>{`
-              @keyframes fadeInLargeModal {
-                from { opacity: 0; }
-                to { opacity: 1; }
-              }
-              @keyframes fadeInOverlay {
-                from { opacity: 0; }
-                to { opacity: 1; }
-              }
-              @keyframes scaleUpLargeModal {
-                from { transform: scale(0.96); opacity: 0; }
-                to { transform: scale(1); opacity: 1; }
-              }
-              .large-modal-container {
-                animation: scaleUpLargeModal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-              }
-              .custom-scrollbar::-webkit-scrollbar {
-                width: 6px;
-                height: 6px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-track {
-                background: transparent;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb {
-                background: rgba(255, 255, 255, 0.08);
-                border-radius: 3px;
-              }
-              .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                background: rgba(255, 255, 255, 0.15);
-              }
-            `}</style>
-
-            <div
-              className="large-modal-container"
-              style={{
-                width: '85vw',
-                height: '80vh',
-                background: 'rgba(11, 15, 26, 0.96)',
-                backdropFilter: 'blur(32px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '28px',
-                display: 'flex',
-                overflow: 'hidden',
-                boxShadow: '0 25px 70px rgba(0,0,0,0.85), inset 0 0 0 1px rgba(255,255,255,0.05)',
-                zIndex: 10000,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 1. Left Navigation Sidebar (Width: 240px) */}
-              <div
-                style={{
-                  width: '240px',
-                  background: 'rgba(0, 0, 0, 0.22)',
-                  borderRight: '1px solid rgba(255, 255, 255, 0.06)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%',
-                  padding: '24px 16px',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-                  {/* Brand Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '8px' }}>
-                    <div
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #a855f7, #ec4899)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 0 12px rgba(168, 85, 247, 0.5)',
-                      }}
-                    >
-                      <span style={{ fontSize: '18px' }}>🔮</span>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: '15px', color: '#fff', letterSpacing: '0.5px' }}>Toonflow Core</div>
-                      <div style={{ fontSize: '9px', color: 'rgba(168, 85, 247, 0.95)', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', marginTop: '1px' }}>
-                        Premium Suite
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Primary Tabs */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {[
-                      { id: 'templates', label: '🔮 工作流中心', desc: '图像与视频多镜头引擎' },
-                      { id: 'assets', label: '📦 资产管理器', desc: '预设素材与声音克隆' },
-                      { id: 'history', label: '🕐 成果历史记录', desc: 'AI 成果轨迹' },
-                    ].map((tab) => {
-                      const active = activeFloatingPopup === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveFloatingPopup(tab.id as any)}
-                          style={{
-                            width: '100%',
-                            padding: '12px 14px',
-                            borderRadius: '12px',
-                            border: 'none',
-                            background: active
-                              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(236, 72, 153, 0.15) 100%)'
-                              : 'transparent',
-                            color: active ? '#ffffff' : 'rgba(255, 255, 255, 0.55)',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '3px',
-                            borderLeft: active ? '3px solid #a855f7' : '3px solid transparent',
-                            paddingLeft: active ? '11px' : '14px',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!active) {
-                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                              e.currentTarget.style.color = '#fff';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!active) {
-                              e.currentTarget.style.background = 'transparent';
-                              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.55)';
-                            }
-                          }}
-                        >
-                          <span style={{ fontSize: '13px', fontWeight: 700 }}>{tab.label}</span>
-                          <span style={{ fontSize: '9px', opacity: 0.6, fontWeight: 500 }}>{tab.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Sidebar Footer */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '10px',
-                      padding: '10px 12px',
-                      fontSize: '9px',
-                      color: 'rgba(255,255,255,0.4)',
-                      lineHeight: '1.4',
-                    }}
-                  >
-                    🟢 联调运行引擎已就绪<br />
-                    ⚡ COMFIER CORE v3.5<br />
-                    🚀 视口装载正常
-                  </div>
-                  <button
-                    onClick={closeLargeModal}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '10px',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
-                      color: '#ef4444',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
-                  >
-                    🚪 关闭控制台大窗
-                  </button>
-                </div>
-              </div>
-
-              
-              {/* 2. Right Main Working Space (Flex: 1) */}
-              <div
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%',
-                  overflow: 'hidden',
-                  background: 'rgba(10, 12, 18, 0.3)',
-                }}
-              >
-                {/* Header Title Row */}
-                <div
-                  style={{
-                    padding: '24px 30px',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {activeFloatingPopup === 'templates' && '🔮 Toonflow 工作流中心'}
-                      {activeFloatingPopup === 'assets' && '📦 Toonflow 豪华资产中心'}
-                      {activeFloatingPopup === 'history' && '🕐 Toonflow 成果历史轨迹'}
-                    </h2>
-                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', marginTop: '4px' }}>
-                      {activeFloatingPopup === 'templates' && '加载图像与视频工作流模板卡片为节点服务，或拖入 ComfyUI JSON 智能派生节点。'}
-                      {activeFloatingPopup === 'assets' && '筛选与管理高精预置参考图、Unsplash 素材大图、克隆虚拟人旁白色线。'}
-                      {activeFloatingPopup === 'history' && '追溯与复用您以往所生成的图像、视频以及音频历史记录成果。'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={closeLargeModal}
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      color: 'rgba(255,255,255,0.6)',
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '16px',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-                      e.currentTarget.style.color = '#ef4444';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                      e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-
-                {/* Sub-tabs Selection Segment */}
-                <div style={{ padding: '16px 30px 0 30px' }}>
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      background: 'rgba(0,0,0,0.3)',
-                      padding: '3px',
-                      borderRadius: '10px',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                    }}
-                  >
-                    {activeFloatingPopup === 'templates' &&
-                      [
-                        { id: 'image', label: '🎨 图像工作流' },
-                        { id: 'video', label: '📹 视频工作流' },
-                        { id: 'audio', label: '🗣️ 音频工作流' },
-                        { id: 'local_comfyui', label: '💻 本地 ComfyUI' },
-                        { id: 'runninghub', label: '⚡ RunningHub工作流' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => setTemplateLargeTab(t.id as any)}
-                          style={{
-                            padding: '8px 16px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: templateLargeTab === t.id ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            color: templateLargeTab === t.id ? '#ffffff' : 'rgba(255,255,255,0.4)',
-                            fontSize: '12px',
-                            fontWeight: templateLargeTab === t.id ? 700 : 500,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-
-                    {activeFloatingPopup === 'assets' &&
-                      [
-                        { id: 'mine', label: '📦 我的资产' },
-                        { id: 'library', label: '🖼️ 预设素材库 (8张场景大图)' },
-                        { id: 'virtual', label: '🎙️ 虚拟人库 (形象与试听克隆)' },
-                        { id: 'other', label: ' LORA 其他预设' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => setAssetLargeTab(t.id as any)}
-                          style={{
-                            padding: '8px 16px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: assetLargeTab === t.id ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            color: assetLargeTab === t.id ? '#ffffff' : 'rgba(255,255,255,0.4)',
-                            fontSize: '12px',
-                            fontWeight: assetLargeTab === t.id ? 700 : 500,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-
-                    {activeFloatingPopup === 'history' &&
-                      [
-                        { id: 'image', label: '🖼️ AI 生图历史' },
-                        { id: 'video', label: '📹 视频合成历史' },
-                        { id: 'audio', label: '🎵 音频旁白历史' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => setHistorySubTab(t.id as any)}
-                          style={{
-                            padding: '8px 16px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: historySubTab === t.id ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            color: historySubTab === t.id ? '#ffffff' : 'rgba(255,255,255,0.4)',
-                            fontSize: '12px',
-                            fontWeight: historySubTab === t.id ? 700 : 500,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                  </div>
-                </div>
-                
-                {/* Main Content Area Container */}
-                <div
-                  className="custom-scrollbar"
-                  style={{
-                    flex: 1,
-                    padding: '24px 30px 40px 30px',
-                    overflowY: 'auto',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '20px',
-                  }}
-                >
-                  {/* 1. Templates Main Tab */}
-                  
-                  {activeFloatingPopup === 'templates' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflowY: 'auto', paddingRight: '6px' }} className="custom-scrollbar">
-                      
-                      {/* Image Workflow Templates Tab */}
-                      {templateLargeTab === 'image' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                          {/* 引导跳转卡片 (前往 AI应用（工作流）) */}
-                          <div
-                            onClick={() => {
-                              setSettingsActiveTab('workflow');
-                              setIsSettingsOpen(true);
-                            }}
-                            style={{
-                              padding: '16px 24px',
-                              border: '1px solid rgba(168, 85, 247, 0.25)',
-                              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
-                              borderRadius: '16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              gap: '16px',
-                              boxShadow: '0 8px 32px rgba(168, 85, 247, 0.05)',
-                              transition: 'all 0.3s ease',
-                              marginBottom: '20px'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)';
-                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(168, 85, 247, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.25)';
-                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(168, 85, 247, 0.05)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))' }}>🔮</span>
-                              <div style={{ textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                                  前往「AI应用（工作流）」配置中心
-                                </h3>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
-                                  在此输入 RunningHub 的 App ID，智能拉取云端工作流的物理字段，支持别名修改与参数勾选，保存后立即在此调用！
-                                </p>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {PRESET_WORKFLOWS
-                            .filter(w => w.capability === 'image' && w.source === 'runninghub')
-                            .map(w => ({
-                              id: w.id,
-                              title: w.name,
-                              desc: w.description,
-                              cover: w.cover || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80',
-                              tag: w.tag || '✨ 推荐',
-                              color: w.color || '#a855f7',
-                              boundId: w.id
-                            }))
-                            .filter(t => !t.boundId || activeWorkflowIds.includes(t.boundId))
-                            .map((tmpl) => (
-                            <div
-                              key={tmpl.id}
-                              style={{
-                                borderRadius: '14px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                background: 'rgba(0,0,0,0.2)',
-                                padding: '10px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                transition: 'all 0.25s',
-                              }}
-                            >
-                              <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px' }}>
-                                <img src={tmpl.cover} alt={tmpl.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                <span
-                                  style={{
-                                    position: 'absolute',
-                                    top: '6px',
-                                    left: '6px',
-                                    background: tmpl.color,
-                                    color: '#fff',
-                                    padding: '2px 6px',
-                                    borderRadius: '6px',
-                                    fontSize: '9px',
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {tmpl.tag}
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                <div>
-                                  <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.title}>{tmpl.title}</h4>
-                                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>{tmpl.desc}</p>
-                                </div>
-                                <button
-                                  onClick={() => spawnWorkflowNode(tmpl.id, tmpl.title, 'image')}
-                                  style={{
-                                    marginTop: '6px',
-                                    padding: '6px',
-                                    borderRadius: '6px',
-                                    background: 'rgba(168, 85, 247, 0.2)',
-                                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                                    color: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.45)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                                >
-                                  ➕ 添加到画布
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* 动态追加用户自定义的本地 ComfyUI / RunningHub 图像模板 */}
-                        {savedTemplates.filter(t => !t.capability || t.capability === 'image').length > 0 && (
-                          <div style={{ marginTop: '30px' }}>
-                            <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span>🔌</span> 您的自定义/本地 ComfyUI 图像工作流 ({savedTemplates.filter(t => !t.capability || t.capability === 'image').length})
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                              {savedTemplates.filter(t => !t.capability || t.capability === 'image').map((tmpl) => (
-                                <div
-                                  key={tmpl.id}
-                                  style={{
-                                    borderRadius: '14px',
-                                    overflow: 'hidden',
-                                    border: '1px solid rgba(255,255,255,0.06)',
-                                    background: 'rgba(0,0,0,0.2)',
-                                    padding: '10px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                    transition: 'all 0.25s',
-                                  }}
-                                >
-                                  <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
-                                    <img 
-                                      src={tmpl.previewImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'} 
-                                      alt={tmpl.name} 
-                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                    />
-                                    <span
-                                      style={{
-                                        position: 'absolute',
-                                        top: '6px',
-                                        left: '6px',
-                                        background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
-                                        color: '#fff',
-                                        padding: '2px 6px',
-                                        borderRadius: '6px',
-                                        fontSize: '9px',
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                    <div>
-                                      <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
-                                      <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
-                                        {tmpl.description || '自定义解析的本地工作流模板...'}
-                                      </p>
-                                    </div>
-                                    <button
-                                      onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
-                                      style={{
-                                        marginTop: '6px',
-                                        padding: '6px',
-                                        borderRadius: '6px',
-                                        background: 'rgba(14, 165, 233, 0.2)',
-                                        border: '1px solid rgba(14, 165, 233, 0.4)',
-                                        color: '#fff',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                      }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.45)')}
-                                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.2)')}
-                                    >
-                                      {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                      {/* Video Workflow Templates Tab */}
-                      {templateLargeTab === 'video' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                          {/* 引导跳转卡片 (前往 AI应用（工作流）) */}
-                          <div
-                            onClick={() => {
-                              setSettingsActiveTab('workflow');
-                              setIsSettingsOpen(true);
-                            }}
-                            style={{
-                              padding: '16px 24px',
-                              border: '1px solid rgba(168, 85, 247, 0.25)',
-                              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
-                              borderRadius: '16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              gap: '16px',
-                              boxShadow: '0 8px 32px rgba(168, 85, 247, 0.05)',
-                              transition: 'all 0.3s ease',
-                              marginBottom: '20px'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)';
-                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(168, 85, 247, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.25)';
-                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(168, 85, 247, 0.05)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))' }}>🔮</span>
-                              <div style={{ textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                                  前往「AI应用（工作流）」配置中心
-                                </h3>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
-                                  在此输入 RunningHub 的 App ID，智能拉取云端工作流的物理字段，支持别名修改与参数勾选，保存后立即在此调用！
-                                </p>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {PRESET_WORKFLOWS
-                            .filter(w => w.capability === 'video' && w.source === 'runninghub')
-                            .map(w => ({
-                              id: w.id,
-                              title: w.name,
-                              desc: w.description,
-                              cover: w.cover || 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80',
-                              tag: w.tag || '🎬 电商',
-                              color: w.color || '#a855f7'
-                            }))
-                            .map((tmpl) => (
-                            <div
-                              key={tmpl.id}
-                              style={{
-                                borderRadius: '14px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                background: 'rgba(0,0,0,0.2)',
-                                padding: '10px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                transition: 'all 0.25s',
-                              }}
-                            >
-                              <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px' }}>
-                                <img src={tmpl.cover} alt={tmpl.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                <span
-                                  style={{
-                                    position: 'absolute',
-                                    top: '6px',
-                                    left: '6px',
-                                    background: tmpl.color,
-                                    color: '#fff',
-                                    padding: '2px 6px',
-                                    borderRadius: '6px',
-                                    fontSize: '9px',
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {tmpl.tag}
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                <div>
-                                  <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.title}>{tmpl.title}</h4>
-                                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>{tmpl.desc}</p>
-                                </div>
-                                <button
-                                  onClick={() => spawnWorkflowNode(tmpl.id, tmpl.title, 'video')}
-                                  style={{
-                                    marginTop: '6px',
-                                    padding: '6px',
-                                    borderRadius: '6px',
-                                    background: 'rgba(168, 85, 247, 0.2)',
-                                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                                    color: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.45)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                                >
-                                  ➕ 添加到画布
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* 动态追加用户自定义的本地 ComfyUI / RunningHub 视频模板 */}
-                        {savedTemplates.filter(t => t.capability === 'video').length > 0 && (
-                          <div style={{ marginTop: '30px' }}>
-                            <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span>🔌</span> 您的自定义/本地 ComfyUI 视频工作流 ({savedTemplates.filter(t => t.capability === 'video').length})
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                              {savedTemplates.filter(t => t.capability === 'video').map((tmpl) => (
-                                <div
-                                  key={tmpl.id}
-                                  style={{
-                                    borderRadius: '14px',
-                                    overflow: 'hidden',
-                                    border: '1px solid rgba(255,255,255,0.06)',
-                                    background: 'rgba(0,0,0,0.2)',
-                                    padding: '10px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                    transition: 'all 0.25s',
-                                  }}
-                                >
-                                  <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
-                                    <img 
-                                      src={tmpl.previewImage || 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80'} 
-                                      alt={tmpl.name} 
-                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                    />
-                                    <span
-                                      style={{
-                                        position: 'absolute',
-                                        top: '6px',
-                                        left: '6px',
-                                        background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
-                                        color: '#fff',
-                                        padding: '2px 6px',
-                                        borderRadius: '6px',
-                                        fontSize: '9px',
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                    <div>
-                                      <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
-                                      <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
-                                        {tmpl.description || '自定义视频合成工作流模板...'}
-                                      </p>
-                                    </div>
-                                    <button
-                                      onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
-                                      style={{
-                                        marginTop: '6px',
-                                        padding: '6px',
-                                        borderRadius: '6px',
-                                        background: 'rgba(14, 165, 233, 0.2)',
-                                        border: '1px solid rgba(14, 165, 233, 0.4)',
-                                        color: '#fff',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                      }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.45)')}
-                                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.2)')}
-                                    >
-                                      {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                      {/* Audio Workflow Templates Tab */}
-                      {templateLargeTab === 'audio' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                          {/* 引导跳转卡片 (前往 AI应用（工作流）) */}
-                          <div
-                            onClick={() => {
-                              setSettingsActiveTab('templates');
-                              setIsSettingsOpen(true);
-                            }}
-                            style={{
-                              padding: '16px 24px',
-                              border: '1px solid rgba(16, 185, 129, 0.25)',
-                              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
-                              borderRadius: '16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              gap: '16px',
-                              boxShadow: '0 8px 32px rgba(16, 185, 129, 0.05)',
-                              transition: 'all 0.3s ease',
-                              marginBottom: '20px'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.6)';
-                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(16, 185, 129, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.25)';
-                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(16, 185, 129, 0.05)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.5))' }}>🗣️</span>
-                              <div style={{ textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                                  前往「配置工作流参数」管理中心
-                                </h3>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
-                                  在此上传您的 ComfyUI JSON 或 RunningHub 资产，深度定制音频克隆暴露参数、别名及多图映射。
-                                </p>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#34d399', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
-                          </div>
-
-                          {/* 自定义 ComfyUI 音频工作流列表 */}
-                          <div>
-                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>📋</span> 已保存的音频工作流 ({savedTemplates.filter(t => t.capability === 'audio').length})
-                            </h4>
-                            {templatesLoading ? (
-                              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>🔄 正在读取模板...</div>
-                            ) : savedTemplates.filter(t => t.capability === 'audio').length === 0 ? (
-                              <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.3)', fontSize: '11px', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '10px' }}>
-                                📭 暂无已保存的声音克隆工作流，请在右上角「⚙️ 全局设置」➔「自定义工作流」中导入 ComfyUI JSON 进行解析保存。
-                              </div>
-                            ) : (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                                {savedTemplates.filter(t => t.capability === 'audio').map((tmpl) => (
-                                  <div
-                                    key={tmpl.id}
-                                    style={{
-                                      borderRadius: '14px',
-                                      overflow: 'hidden',
-                                      border: '1px solid rgba(255,255,255,0.06)',
-                                      background: 'rgba(0,0,0,0.2)',
-                                      padding: '10px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '8px',
-                                      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                      transition: 'all 0.25s',
-                                    }}
-                                  >
-                                    <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
-                                      <img src={tmpl.previewImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'} alt={tmpl.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                      <span
-                                        style={{
-                                          position: 'absolute',
-                                          top: '6px',
-                                          left: '6px',
-                                          background: tmpl.source === 'local_comfyui' ? 'rgba(14, 165, 233, 0.85)' : 'rgba(168, 85, 247, 0.85)',
-                                          color: '#fff',
-                                          padding: '2px 6px',
-                                          borderRadius: '6px',
-                                          fontSize: '9px',
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        {tmpl.source === 'local_comfyui' ? '🔌 本地 Comfy' : '⚡ RunningHub'}
-                                      </span>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                      <div>
-                                        <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
-                                        <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>
-                                          {tmpl.description || '自定义声音克隆工作流模板...'}
-                                        </p>
-                                      </div>
-                                      <button
-                                        onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
-                                        style={{
-                                          marginTop: '6px',
-                                          padding: '6px',
-                                          borderRadius: '6px',
-                                          background: 'rgba(16, 185, 129, 0.2)',
-                                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                                          color: '#fff',
-                                          fontSize: '10px',
-                                          fontWeight: 700,
-                                          cursor: 'pointer',
-                                          transition: 'all 0.2s',
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.45)')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)')}
-                                      >
-                                        {modalNodeTarget ? '➕ 装载到当前节点' : '➕ 添加到画布'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Local ComfyUI Workflows Tab */}
-                      {templateLargeTab === 'local_comfyui' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-                          <div
-                            onClick={() => {
-                              setSettingsActiveTab('templates');
-                              setIsSettingsOpen(true);
-                            }}
-                            style={{
-                              padding: '16px 24px',
-                              border: '1px solid rgba(168, 85, 247, 0.25)',
-                              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
-                              borderRadius: '16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              gap: '16px',
-                              boxShadow: '0 8px 32px rgba(168, 85, 247, 0.05)',
-                              transition: 'all 0.3s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)';
-                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(168, 85, 247, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.25)';
-                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(168, 85, 247, 0.05)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))' }}>🔮</span>
-                              <div style={{ textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                                  前往「配置工作流参数」管理中心
-                                </h3>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
-                                  在此上传您的 ComfyUI JSON 或 RunningHub 资产，深度定制暴露参数、别名及多图映射。
-                                </p>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
-                          </div>
-
-                          {/* 已保存本地ComfyUI模板列表 */}
-                          <div>
-                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>📋</span> 已保存的本地 ComfyUI ({savedTemplates.filter(t => t.source === 'local_comfyui').length})
-                            </h4>
-                            {templatesLoading ? (
-                              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>🔄 正在读取模板...</div>
-                            ) : savedTemplates.filter(t => t.source === 'local_comfyui').length === 0 ? (
-                              <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.3)', fontSize: '11px', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '10px' }}>
-                                📭 暂无已保存的自定义工作流，请在右上角「⚙️ 全局设置」➔「自定义工作流」中进行解析保存。
-                              </div>
-                            ) : (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                                {savedTemplates.filter(t => t.source === 'local_comfyui').map((tmpl) => (
-                                  <div
-                                    key={tmpl.id}
-                                    onMouseEnter={() => setHoveredCardId(tmpl.id)}
-                                    onMouseLeave={() => setHoveredCardId(null)}
-                                    style={{
-                                      borderRadius: '14px',
-                                      overflow: 'hidden',
-                                      border: '1px solid rgba(255,255,255,0.06)',
-                                      background: 'rgba(0,0,0,0.2)',
-                                      padding: '10px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '8px',
-                                      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                      transition: 'all 0.25s',
-                                    }}
-                                  >
-                                    <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
-                                      <img src={tmpl.previewImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'} alt={tmpl.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                      <span
-                                        style={{
-                                          position: 'absolute',
-                                          top: '6px',
-                                          left: '6px',
-                                          background: 'rgba(14, 165, 233, 0.85)',
-                                          color: '#fff',
-                                          padding: '2px 6px',
-                                          borderRadius: '6px',
-                                          fontSize: '9px',
-                                          fontWeight: 700,
-                                          zIndex: 5,
-                                        }}
-                                      >
-                                        💻 ComfyUI
-                                      </span>
-
-                                      {/* 📷 更换封面 hover glassmorphic button */}
-                                      {hoveredCardId === tmpl.id && (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0,
-                                            width: '100%',
-                                            height: '100%',
-                                            background: 'rgba(11, 15, 26, 0.75)',
-                                            backdropFilter: 'blur(4px)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: 10,
-                                            cursor: 'pointer',
-                                            animation: 'fadeInOverlay 0.2s ease',
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleChangeCardCover(tmpl);
-                                          }}
-                                        >
-                                          <div
-                                            style={{
-                                              background: 'rgba(255, 255, 255, 0.15)',
-                                              border: '1px solid rgba(255, 255, 255, 0.25)',
-                                              borderRadius: '20px',
-                                              color: '#fff',
-                                              padding: '4px 10.5px',
-                                              fontSize: '9.5px',
-                                              fontWeight: 'bold',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '4px',
-                                              transition: 'all 0.2s',
-                                            }}
-                                          >
-                                            📷 更换封面
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                      <div>
-                                        <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
-                                        <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>{tmpl.description || '暂无描述信息...'}</p>
-                                      </div>
-                                      <button
-                                        onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
-                                        style={{
-                                          marginTop: '6px',
-                                          padding: '6px',
-                                          borderRadius: '6px',
-                                          background: 'rgba(168, 85, 247, 0.2)',
-                                          border: '1px solid rgba(168, 85, 247, 0.4)',
-                                          color: '#fff',
-                                          fontSize: '10px',
-                                          fontWeight: 700,
-                                          cursor: 'pointer',
-                                          transition: 'all 0.2s',
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.45)')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                                      >
-                                        ➕ 添加到画布
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* RunningHub Workflows Tab */}
-                      {templateLargeTab === 'runninghub' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-                          <div
-                            onClick={() => {
-                              setSettingsActiveTab('templates');
-                              setIsSettingsOpen(true);
-                            }}
-                            style={{
-                              padding: '16px 24px',
-                              border: '1px solid rgba(168, 85, 247, 0.25)',
-                              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(236, 72, 153, 0.03) 100%)',
-                              borderRadius: '16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              gap: '16px',
-                              boxShadow: '0 8px 32px rgba(168, 85, 247, 0.05)',
-                              transition: 'all 0.3s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)';
-                              e.currentTarget.style.boxShadow = '0 12px 40px rgba(168, 85, 247, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.25)';
-                              e.currentTarget.style.boxShadow = '0 8px 32px rgba(168, 85, 247, 0.05)';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                              <span style={{ fontSize: '28px', filter: 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))' }}>🔮</span>
-                              <div style={{ textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                                  前往「配置工作流参数」管理中心
-                                </h3>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', margin: 0, lineHeight: '1.4' }}>
-                                  在此上传您的 ComfyUI JSON 或 RunningHub 资产，深度定制暴露参数、别名及多图映射。
-                                </p>
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: 'bold', whiteSpace: 'nowrap' }}>立即前往 →</span>
-                          </div>
-
-                          <div>
-                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'hsl(var(--accent-secondary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>📋</span> 已保存的 RunningHub 工作流 ({savedTemplates.filter(t => t.source === 'runninghub').length})
-                            </h4>
-                            {templatesLoading ? (
-                              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>🔄 正在读取模板...</div>
-                            ) : savedTemplates.filter(t => t.source === 'runninghub').length === 0 ? (
-                              <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.3)', fontSize: '11px', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '10px' }}>
-                                📭 暂无已保存的 RunningHub 自定义工作流，请在右上角「⚙️ 全局设置」➔「自定义工作流」中进行解析保存。
-                              </div>
-                            ) : (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                                {savedTemplates.filter(t => t.source === 'runninghub').map((tmpl) => (
-                                  <div
-                                    key={tmpl.id}
-                                    onMouseEnter={() => setHoveredCardId(tmpl.id)}
-                                    onMouseLeave={() => setHoveredCardId(null)}
-                                    style={{
-                                      borderRadius: '14px',
-                                      overflow: 'hidden',
-                                      border: '1px solid rgba(255,255,255,0.06)',
-                                      background: 'rgba(0,0,0,0.2)',
-                                      padding: '10px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '8px',
-                                      boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                      transition: 'all 0.25s',
-                                    }}
-                                  >
-                                    <div style={{ width: '100%', aspectRatio: '16 / 9', position: 'relative', overflow: 'hidden', borderRadius: '10px', background: 'rgba(0,0,0,0.4)' }}>
-                                      <img src={tmpl.previewImage || 'https://images.unsplash.com/photo-1536240478700-b869ad10e128?w=400&q=80'} alt={tmpl.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                      <span
-                                        style={{
-                                          position: 'absolute',
-                                          top: '6px',
-                                          left: '6px',
-                                          background: 'rgba(168, 85, 247, 0.85)',
-                                          color: '#fff',
-                                          padding: '2px 6px',
-                                          borderRadius: '6px',
-                                          fontSize: '9px',
-                                          fontWeight: 700,
-                                          zIndex: 5,
-                                        }}
-                                      >
-                                        ⚡ RunningHub
-                                      </span>
-
-                                      {/* 📷 更换封面 hover glassmorphic button */}
-                                      {hoveredCardId === tmpl.id && (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0,
-                                            width: '100%',
-                                            height: '100%',
-                                            background: 'rgba(11, 15, 26, 0.75)',
-                                            backdropFilter: 'blur(4px)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: 10,
-                                            cursor: 'pointer',
-                                            animation: 'fadeInOverlay 0.2s ease',
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleChangeCardCover(tmpl);
-                                          }}
-                                        >
-                                          <div
-                                            style={{
-                                              background: 'rgba(255, 255, 255, 0.15)',
-                                              border: '1px solid rgba(255, 255, 255, 0.25)',
-                                              borderRadius: '20px',
-                                              color: '#fff',
-                                              padding: '4px 10.5px',
-                                              fontSize: '9.5px',
-                                              fontWeight: 'bold',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '4px',
-                                              transition: 'all 0.2s',
-                                            }}
-                                          >
-                                            📷 更换封面
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, justifyContent: 'space-between' }}>
-                                      <div>
-                                        <h4 style={{ fontSize: '11px', fontWeight: 800, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={tmpl.name}>{tmpl.name}</h4>
-                                        <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', height: '25px' }}>{tmpl.description || '暂无描述信息...'}</p>
-                                      </div>
-                                      <button
-                                        onClick={() => spawnCustomWorkflowTemplateNode(tmpl)}
-                                        style={{
-                                          marginTop: '6px',
-                                          padding: '6px',
-                                          borderRadius: '6px',
-                                          background: 'rgba(168, 85, 247, 0.2)',
-                                          border: '1px solid rgba(168, 85, 247, 0.4)',
-                                          color: '#fff',
-                                          fontSize: '10px',
-                                          fontWeight: 700,
-                                          cursor: 'pointer',
-                                          transition: 'all 0.2s',
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.45)')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                                      >
-                                        ➕ 添加到画布
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  )}
-{activeFloatingPopup === 'assets' && (
-                    <>
-                      {/* Common Upload Header for Assets tabs */}
-                      <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const file = e.dataTransfer.files?.[0];
-                          if (file) handleResourceUpload(file);
-                        }}
-                        onClick={() => {
-                          const inp = document.createElement('input');
-                          inp.type = 'file';
-                          inp.accept = 'image/*,video/*,audio/*';
-                          inp.onchange = (e: any) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleResourceUpload(file);
-                          };
-                          inp.click();
-                        }}
-                        style={{
-                          padding: '16px',
-                          border: '1px dashed rgba(168, 85, 247, 0.35)',
-                          background: 'rgba(168, 85, 247, 0.02)',
-                          borderRadius: '16px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          marginBottom: '10px',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = '#a855f7';
-                          e.currentTarget.style.background = 'rgba(168, 85, 247, 0.06)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.35)';
-                          e.currentTarget.style.background = 'rgba(168, 85, 247, 0.02)';
-                        }}
-                      >
-                        <span style={{ fontSize: '24px' }}>📥</span>
-                        <div style={{ textAlign: 'left' }}>
-                          <div style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>将本地图/音/视频资源拖拽或点击上传到大仓中</div>
-                          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-                            资源上传后会自动存储在 IndexedDB 本地大仓中，并在画布视口中央派生 Upload 节点。
-                          </div>
-                        </div>
-                      </div>
-
-                      {assetLargeTab === 'mine' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {uploadedAssets.length === 0 ? (
-                            <div style={{ gridColumn: '1 / span 4', padding: '48px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-                              📭 暂无自定义上传或生成的资产，请拖拽文件到上方进行上传。
-                            </div>
-                          ) : (
-                            uploadedAssets.map((asset) => (
-                              <div
-                                key={asset.id}
-                                style={{
-                                  borderRadius: '14px',
-                                  overflow: 'hidden',
-                                  border: '1px solid rgba(255,255,255,0.06)',
-                                  background: 'rgba(0,0,0,0.2)',
-                                  padding: '10px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '8px',
-                                }}
-                              >
-                                <div
-                                  onClick={() => setFullScreenMedia({ url: asset.url, type: asset.type })}
-                                  style={{
-                                    width: '100%',
-                                    aspectRatio: '16 / 9',
-                                    borderRadius: '10px',
-                                    overflow: 'hidden',
-                                    background: 'rgba(0,0,0,0.4)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    position: 'relative',
-                                    cursor: 'zoom-in',
-                                  }}
-                                >
-                                  {asset.type === 'image' && <ResolvedMedia url={asset.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                  {asset.type === 'video' && <ResolvedMedia url={asset.url} type="video" style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />}
-                                  {asset.type === 'audio' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                      <span style={{ fontSize: '32px' }}>🎵</span>
-                                      <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>音色/配音旁白</span>
-                                    </div>
-                                  )}
-                                  <span style={{ position: 'absolute', top: '6px', right: '6px', width: '18px', height: '18px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>🔍</span>
-                                  
-                                  {/* 物理删除资产按钮 */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (confirm('确认物理删除该资产吗？此操作将从资产库移出，无法撤销。')) {
-                                        setUploadedAssets(prev => prev.filter(ua => ua.id !== asset.id));
-                                      }
-                                    }}
-                                    style={{
-                                      position: 'absolute',
-                                      top: '6px',
-                                      left: '6px',
-                                      width: '18px',
-                                      height: '18px',
-                                      borderRadius: '50%',
-                                      background: 'rgba(239, 68, 68, 0.85)',
-                                      border: 'none',
-                                      color: '#fff',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '9px',
-                                      fontWeight: 'bold',
-                                      cursor: 'pointer',
-                                      zIndex: 10,
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                                    }}
-                                    title="物理删除该资产"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={asset.nodeName}>
-                                    {asset.nodeName}
-                                  </span>
-                                  <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)' }}>类型: {asset.type.toUpperCase()}</span>
-                                </div>
-                                <button
-                                  onClick={() => handleInjectAsset(asset.url, asset.type, asset.nodeName)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '6px',
-                                    background: 'rgba(168, 85, 247, 0.25)',
-                                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.4)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)')}
-                                >
-                                  ➕ 添加到画布
-                              </button>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
-
-                      {assetLargeTab === 'library' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {[
-                            // 用户上传的图片（最新在前）
-                            ...libraryAssets.map(a => ({ ...a, tag: '用户上传', isPreset: false })),
-                            // 预设图片
-                            { id: 'preset-1', name: '🖼️ 赛博飞空城堡', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', tag: '场景', isPreset: true },
-                            { id: 'preset-2', name: '🖼️ 蒸汽朋克少女', url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f', tag: '人物', isPreset: true },
-                            { id: 'preset-3', name: '🖼️ 晶体魔法森林', url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab', tag: '场景', isPreset: true },
-                            { id: 'preset-4', name: '🖼️ 机械反重力城郭', url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119', tag: '场景', isPreset: true },
-                            { id: 'preset-5', name: '🖼️ 极简化三维抽象', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853', tag: '风格', isPreset: true },
-                            { id: 'preset-6', name: '🖼️ VR全景太空站', url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa', tag: '全景', isPreset: true },
-                            { id: 'preset-7', name: '🖼️ 古风山水殿堂', url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf', tag: '场景', isPreset: true },
-                            { id: 'preset-8', name: '🖼️ 霓虹都市雨景', url: 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', tag: '场景', isPreset: true },
-                          ].map((a: any) => {
-                            const asset = { type: 'image', ...a } as any;
-                            return (
-                            <div
-                              key={asset.id}
-                              style={{
-                                borderRadius: '14px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                background: 'rgba(0,0,0,0.2)',
-                                padding: '10px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                              }}
-                            >
-                              <div
-                                onClick={() => setFullScreenMedia({ url: asset.url, type: asset.type || 'image' })}
-                                style={{
-                                  width: '100%',
-                                  aspectRatio: '16 / 9',
-                                  borderRadius: '10px',
-                                  overflow: 'hidden',
-                                  background: 'rgba(0,0,0,0.4)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  position: 'relative',
-                                  cursor: 'zoom-in',
-                                }}
-                              >
-                                {/* 支持图片、视频、音频 */}
-                                {(asset.type === 'image' || !asset.type) && <ResolvedMedia url={asset.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                {asset.type === 'video' && <ResolvedMedia url={asset.url} type="video" style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />}
-                                {asset.type === 'audio' && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '32px' }}>🎵</span>
-                                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>音色/配音</span>
-                                  </div>
-                                )}
-                                <span style={{ position: 'absolute', top: '6px', right: '6px', width: '18px', height: '18px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>🔍</span>
-                                {/* 删除按钮 - 仅用户上传的显示 */}
-                                {!asset.isPreset && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (confirm('确定删除此图片吗？')) {
-                                        setLibraryAssets(prev => prev.filter(a => a.id !== asset.id));
-                                      }
-                                    }}
-                                    style={{
-                                      position: 'absolute',
-                                      top: '6px',
-                                      left: '6px',
-                                      width: '18px',
-                                      height: '18px',
-                                      borderRadius: '50%',
-                                      background: 'rgba(239, 68, 68, 0.85)',
-                                      border: 'none',
-                                      color: '#fff',
-                                      fontSize: '10px',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '110px' }} title={asset.name}>
-                                  {asset.name}
-                                </span>
-                                <span style={{ fontSize: '8px', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', padding: '1px 4px', borderRadius: '4px' }}>
-                                  {asset.tag}
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
-                                  onClick={() => handleInjectLibraryAsset(asset.url, asset.name)}
-                                  style={{
-                                    flex: 1,
-                                    padding: '6px',
-                                    background: 'rgba(168, 85, 247, 0.2)',
-                                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    fontSize: '9px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.4)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                                >
-                                  ➕ 添加到画布
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    downloadFileDirectly(asset.url, asset.name);
-                                  }}
-                                  style={{
-                                    padding: '6px 10px',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: '1px solid rgba(255,255,255,0.08)',
-                                    borderRadius: '6px',
-                                    color: '#fff',
-                                    fontSize: '10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    textDecoration: 'none',
-                                  }}
-                                >
-                                  ⬇️
-                                </button>
-                              </div>
-                            </div>
-                          );
-                          })}
-                        </div>
-                      )}
-
-                      {assetLargeTab === 'virtual' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
-                          {[
-                            { id: 'xiaoying', name: '小樱 (暖甜配音)', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80', desc: '治愈、温暖系甜美声线。非常适合儿童画册配音、都市情感剧解说旁白。', audio: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', color: 'rgba(236, 72, 153, 0.05)', border: 'rgba(236, 72, 153, 0.15)' },
-                            { id: 'ailun', name: '艾伦 (极客男声)', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80', desc: '睿智、科技感与机械力融合的专业极客男声音色。适合科技解说、科幻电影概念片。', audio: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', color: 'rgba(59, 130, 246, 0.05)', border: 'rgba(59, 130, 246, 0.15)' },
-                            { id: 'leiya', name: '蕾雅 (御姐音色)', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&q=80', desc: '高冷优雅、气场全开的性感女声。常用于时尚奢侈品广告、影视大片中子解说。', audio: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', color: 'rgba(139, 92, 246, 0.05)', border: 'rgba(139, 92, 246, 0.15)' },
-                            { id: 'sam', name: '山姆 (深沉男播)', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80', desc: '浑厚低沉、大师级磁性电影播报男声。适合经典历史、动作电影史诗级解说旁白。', audio: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', color: 'rgba(245, 158, 11, 0.05)', border: 'rgba(245, 158, 11, 0.15)' },
-                          ].map((v) => (
-                            <div
-                              key={v.id}
-                              style={{
-                                borderRadius: '20px',
-                                border: `1px solid ${v.border}`,
-                                background: v.color,
-                                padding: '20px',
-                                display: 'flex',
-                                gap: '16px',
-                                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                              }}
-                            >
-                              <div style={{ width: '80px', height: '80px', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
-                                <img src={v.avatar} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              </div>
-                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'space-between' }}>
-                                <div>
-                                  <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#fff' }}>{v.name}</h4>
-                                  <p style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.4', marginTop: '4px' }}>{v.desc}</p>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                                  <button
-                                    onClick={() => handleToggleVoicePlay(v.id, v.audio)}
-                                    style={{
-                                      flex: 1,
-                                      padding: '6px 12px',
-                                      background: playingVoiceId === v.id ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.04)',
-                                      border: playingVoiceId === v.id ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-                                      borderRadius: '8px',
-                                      color: playingVoiceId === v.id ? '#ef4444' : '#fff',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '4px',
-                                    }}
-                                  >
-                                    <span>{playingVoiceId === v.id ? '⏸ 暂停试听' : '🔊 试听音色'}</span>
-                                  </button>
-                                  <button
-                                    onClick={() => handleCloneVirtualVoice(v.name, v.audio)}
-                                    style={{
-                                      flex: 1.2,
-                                      padding: '6px 12px',
-                                      background: 'linear-gradient(135deg, #a855f7, #ec4899)',
-                                      border: 'none',
-                                      borderRadius: '8px',
-                                      color: '#fff',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    🎙️ 一键克隆声线
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {assetLargeTab === 'other' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                          {[
-                            { name: '✨ 动漫二次元 LORA 预设', scale: '0.85', desc: '日系唯美画风强化，适用于动漫电影分镜。' },
-                            { name: '✨ 水墨江南写意 LORA 权重', scale: '0.70', desc: '中国风泼墨意境渲染，适用于古风艺术短片。' },
-                            { name: '✨ 3D 拟真次世代渲染 LORA', scale: '0.90', desc: '虚幻5级别写实大片光影，适用于商用广告。' },
-                            { name: '✨ 赛博朋克深空霓虹 LORA', scale: '0.80', desc: '绚丽霓虹灯光轨迹增强，适用于科幻感合成。' },
-                          ].map((lora, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                borderRadius: '14px',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                background: 'rgba(255,255,255,0.02)',
-                                padding: '16px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                                justifyContent: 'space-between',
-                              }}
-                            >
-                              <div>
-                                <h4 style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>{lora.name}</h4>
-                                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '6px', lineHeight: '1.4' }}>{lora.desc}</p>
-                              </div>
-                              <div style={{ marginTop: '12px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#a855f7', fontWeight: 700 }}>
-                                  <span>推荐使用权重:</span>
-                                  <span>{lora.scale}</span>
-                                </div>
-                                <button
-                                  onClick={() => alert(`LORA 预设权重 [${lora.scale}] 已成功复制，可在高级菜单的扩展参数中粘贴引用！`)}
-                                  style={{
-                                    width: '100%',
-                                    marginTop: '8px',
-                                    padding: '5px',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: '1px solid rgba(255,255,255,0.06)',
-                                    borderRadius: '6px',
-                                    color: 'rgba(255,255,255,0.7)',
-                                    fontSize: '9.5px',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  📋 复制引用参数
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* 3. History Main Tab */}
-                  {activeFloatingPopup === 'history' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-                      {getHistoryItems().length === 0 ? (
-                        <div style={{ gridColumn: '1 / span 4', padding: '48px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-                          📭 暂无此分类下的 AI 成果历史生成记录。
-                        </div>
-                      ) : (
-                        getHistoryItems().map((item) => (
-                          <div
-                            key={item.id}
-                            style={{
-                              borderRadius: '14px',
-                              overflow: 'hidden',
-                              border: '1px solid rgba(255,255,255,0.06)',
-                              background: 'rgba(0,0,0,0.2)',
-                              padding: '10px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '8px',
-                            }}
-                          >
-                            <div
-                              onClick={() => setFullScreenMedia({ url: item.url, type: item.type })}
-                              style={{
-                                width: '100%',
-                                aspectRatio: '16 / 9',
-                                borderRadius: '10px',
-                                overflow: 'hidden',
-                                background: 'rgba(0,0,0,0.4)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                position: 'relative',
-                                cursor: 'zoom-in',
-                              }}
-                            >
-                              {item.type === 'image' && <ResolvedMedia url={item.url} type="image" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                              {item.type === 'video' && <ResolvedMedia url={item.url} type="video" style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />}
-                              {item.type === 'audio' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '32px' }}>🎙️</span>
-                                  <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>AI 旁白音频</span>
-                                </div>
-                              )}
-                              <span style={{ position: 'absolute', top: '6px', right: '6px', width: '18px', height: '18px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>🔍</span>
-                            </div>
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                color: '#fff',
-                                textOverflow: 'ellipsis',
-                                overflow: 'hidden',
-                                whiteSpace: 'nowrap',
-                              }}
-                              title={item.name}
-                            >
-                              {item.name}
-                            </span>
-                            {item.type === 'audio' && (
-                              <div style={{ width: '100%', padding: '2px 0' }}>
-                                <ResolvedMedia url={item.url} type="audio" style={{ width: '100%', height: '24px' }} controls />
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button
-                                onClick={() => handleInjectAsset(item.url, item.type, item.name)}
-                                style={{
-                                  flex: 1,
-                                  padding: '6px',
-                                  background: 'rgba(168, 85, 247, 0.2)',
-                                  border: '1px solid rgba(168, 85, 247, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#fff',
-                                  fontSize: '9px',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.4)')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)')}
-                              >
-                                ➕ 添加到画布
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  downloadFileDirectly(item.url, `toonflow-${item.type}-${item.id}`);
-                                }}
-                                style={{
-                                  padding: '6px 10px',
-                                  background: 'rgba(255,255,255,0.03)',
-                                  border: '1px solid rgba(255,255,255,0.08)',
-                                  borderRadius: '6px',
-                                  color: '#fff',
-                                  fontSize: '10px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  textDecoration: 'none',
-                                }}
-                              >
-                                ⬇️
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+        }}
+      />
 
       {/* 4. 右侧高保真配置抽屉 (Properties Drawer) */}
       {editingNodeId && (
@@ -7238,6 +5762,29 @@ function WorkflowCanvas() {
         initialTab={settingsActiveTab}
       />
 
+      {/* 画布管理弹窗 */}
+      <CanvasManager
+        isOpen={isCanvasManagerOpen}
+        onClose={() => setIsCanvasManagerOpen(false)}
+        currentCanvasId={currentCanvasId}
+        onSwitch={handleSwitchCanvas}
+        onNew={handleNewCanvas}
+        onRename={handleRenameCanvas}
+        onDelete={handleDeleteCanvas}
+        onRestore={handleRestoreCanvas}
+        onPermanentDelete={handlePermanentDeleteCanvas}
+        onShowSnapshots={handleShowSnapshots}
+      />
+
+      {/* 历史快照面板 */}
+      {snapshotCanvasId && (
+        <CanvasSnapshotPanel
+          canvasId={snapshotCanvasId}
+          onClose={() => setSnapshotCanvasId(null)}
+          onRollback={handleSnapshotRollback}
+        />
+      )}
+
       {/* 节点右键菜单 (Node Context Menu Overlay) */}
       {nodeContextMenu && (
         <div 
@@ -7271,47 +5818,73 @@ function WorkflowCanvas() {
             onClick={() => setNodeContextMenu(null)}
           />
 
-          {[
-            { id: 'create_asset', label: '💼 创建资产' },
-            { id: 'copy', label: '📋 复制节点' },
-            { id: 'duplicate', label: '👥 创建副本' },
-            { id: 'download', label: '⬇️ 下载成果' },
-            { id: 'delete', label: '🗑️ 删除节点', danger: true }
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                handleNodeContextMenuAction(item.id, nodeContextMenu.nodeId);
-                setNodeContextMenu(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                border: 'none',
-                background: 'transparent',
-                color: item.danger ? '#ef4444' : '#fff',
-                fontSize: '12px',
-                fontWeight: 500,
-                textAlign: 'left',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = item.danger ? 'rgba(239, 68, 68, 0.15)' : 'rgba(168, 85, 247, 0.15)';
-                e.currentTarget.style.transform = 'translateX(4px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {(() => {
+            const contextNode = nodes.find(n => n.id === nodeContextMenu.nodeId);
+            const isGroup = contextNode?.type === 'purple-group';
+            const selectedCount = nodes.filter(n => n.selected && n.type !== 'purple-group').length;
+
+            const items: Array<{ id: string; label: string; danger?: boolean; special?: boolean }> = [];
+            
+            if (isGroup) {
+              items.push({ id: 'ungroup', label: '🔓 拆解并解散组', special: true });
+            } else if (selectedCount >= 2 || (contextNode && contextNode.selected && selectedCount >= 1)) {
+              // 只要当前有选中的常规节点且被右键点击的常规节点包含在内
+              items.push({ id: 'group_selected', label: `📦 组合选中节点 (${selectedCount})`, special: true });
+            }
+
+            // 添加普通项
+            if (!isGroup) {
+              items.push({ id: 'create_asset', label: '💼 创建资产' });
+            }
+            items.push({ id: 'copy', label: '📋 复制节点' });
+            items.push({ id: 'duplicate', label: '👥 创建副本' });
+            if (!isGroup) {
+              items.push({ id: 'download', label: '⬇️ 下载成果' });
+            }
+            items.push({ id: 'delete', label: isGroup ? '🗑️ 删除组容器' : '🗑️ 删除节点', danger: true });
+
+            return items.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  handleNodeContextMenuAction(item.id, nodeContextMenu.nodeId);
+                  setNodeContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: item.special ? '1px solid rgba(168, 85, 247, 0.4)' : 'none',
+                  background: item.special ? 'rgba(168, 85, 247, 0.1)' : 'transparent',
+                  color: item.danger ? '#ef4444' : item.special ? '#e9d5ff' : '#fff',
+                  fontSize: '12px',
+                  fontWeight: item.special ? 600 : 500,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.2s',
+                  boxShadow: item.special ? '0 0 8px rgba(168, 85, 247, 0.15)' : 'none',
+                  marginBottom: item.special ? '4px' : '0px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = item.danger 
+                    ? 'rgba(239, 68, 68, 0.15)' 
+                    : item.special 
+                      ? 'rgba(168, 85, 247, 0.25)' 
+                      : 'rgba(168, 85, 247, 0.15)';
+                  e.currentTarget.style.transform = 'translateX(4px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = item.special ? 'rgba(168, 85, 247, 0.1)' : 'transparent';
+                  e.currentTarget.style.transform = 'none';
+                }}
+              >
+                <span>{item.label}</span>
+              </button>
+            ));
+          })()}
         </div>
       )}
 
@@ -7348,14 +5921,57 @@ function WorkflowCanvas() {
             onClick={() => setPaneContextMenuPos(null)}
           />
 
+          {(() => {
+            const selectedCount = nodes.filter(n => n.selected && n.type !== 'purple-group').length;
+            if (selectedCount >= 2) {
+              return (
+                <button
+                  onClick={() => {
+                    handleCreateGroupFromSelected();
+                    setPaneContextMenuPos(null);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    background: 'rgba(168, 85, 247, 0.15)',
+                    color: '#e9d5ff',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 0 10px rgba(168, 85, 247, 0.25)',
+                    marginBottom: '6px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)';
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)';
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                >
+                  <span>📦 组合选中节点 ({selectedCount})</span>
+                </button>
+              );
+            }
+            return null;
+          })()}
+
           {[
             { type: 'upload-node', label: '📦 本地上传' },
-            { type: 'prompt-source', label: '📖 文本素材' },
+            { type: 'prompt-source', label: '📖 故事剧本源' },
             { type: 'image-service', label: '🎨 智能生图' },
             { type: 'tts-service', label: '🗣️ 声音克隆' },
             { type: 'video-fusion', label: '📹 视频生成' },
             { type: 'loop-node', label: '🔄 循环迭代' },
-            { type: 'grid-splitter', label: '⊞ 智能切片' },
+            { type: 'grid-splitter', label: '⊞ 宫格排版合成' },
             { type: 'llm-service', label: '🧠 剧本专家' }
           ].map((item) => (
             <button
@@ -7364,6 +5980,8 @@ function WorkflowCanvas() {
                 let initialData = {};
                 if (item.type === 'upload-node') {
                   initialData = { fileType: 'image', fileUrl: '', fileName: '' };
+                } else if (item.type === 'grid-splitter') {
+                  initialData = { gridType: '2x2', gap: 8, bgColor: '#0f172a', borderRadius: 8, outputSize: 2048, localImages: {} };
                 }
                 handleAddAgentNode(item.type as any, initialData);
                 setPaneContextMenuPos(null);
@@ -7429,6 +6047,39 @@ function WorkflowCanvas() {
               position: 'relative'
             }}
           >
+            {/* 右上角物理关闭按钮 */}
+            <button
+              onClick={() => setIsSaveAssetOpen(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                color: 'rgba(255, 255, 255, 0.6)',
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                transition: 'all 0.2s',
+                zIndex: 10,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+              }}
+            >
+              ×
+            </button>
+
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>🎨</span> 保存当前生成为资产
             </h3>
@@ -7449,23 +6100,30 @@ function WorkflowCanvas() {
               }}
             >
               {assetToSave.url ? (
-                assetToSave.url.includes('.mp4') ? (
-                  <video 
-                    src={assetToSave.url} 
+                assetToSave.type === 'video' ? (
+                  <ResolvedMedia 
+                    url={assetToSave.url} 
+                    type="video"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     autoPlay
                     loop
                     muted
+                    playsInline
                   />
-                ) : assetToSave.url.includes('.mp3') || assetToSave.url.includes('.wav') ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                ) : assetToSave.type === 'audio' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', padding: '0 16px' }}>
                     <span style={{ fontSize: '32px' }}>🎵</span>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>音频成果</span>
+                    <ResolvedMedia 
+                      url={assetToSave.url} 
+                      type="audio" 
+                      style={{ width: '100%', height: '24px' }} 
+                      controls 
+                    />
                   </div>
                 ) : (
-                  <img 
-                    src={assetToSave.url} 
-                    alt="Preview" 
+                  <ResolvedMedia 
+                    url={assetToSave.url} 
+                    type="image" 
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 )
@@ -7532,7 +6190,7 @@ function WorkflowCanvas() {
                     cursor: 'pointer'
                   }}
                 >
-                  {['人物', '场景', '物品', '视频', '音频', '其他'].map(tag => (
+                  {['人物', '场景', '物品', '视频', '音频', '音效', '其他'].map(tag => (
                     <option key={tag} value={tag} style={{ background: '#11131a' }}>{tag}</option>
                   ))}
                 </select>
@@ -7622,7 +6280,7 @@ function WorkflowCanvas() {
           const inputs = activeNode.data?.inputs as any;
           if (inputs?.faceRef && inputs.faceRef !== activeUrl) beforeUrl = inputs.faceRef;
           else if (inputs?.imageRef && inputs.imageRef !== activeUrl) beforeUrl = inputs.imageRef;
-          else if (inputs?.fileUrl && inputs.fileUrl !== activeUrl && activeNode.type !== 'upload-node') beforeUrl = inputs.fileUrl;
+          else if (inputs?.fileUrl && inputs.fileUrl !== activeUrl) beforeUrl = inputs.fileUrl;
           
           if (!beforeUrl) {
             const upstreamEdge = edges.find(e => e.target === fullScreenMedia.nodeId);
@@ -8296,7 +6954,7 @@ function WorkflowCanvas() {
             { type: 'tts-service', label: '🗣️ 声音克隆 Agent' },
             { type: 'video-fusion', label: '📹 视频合成 Fusion' },
             { type: 'upload-node', label: '📦 本地上传组件' },
-            { type: 'grid-splitter', label: '⊞ 智能切片' },
+            { type: 'grid-splitter', label: '⊞ 宫格排版合成' },
             { type: 'loop-node', label: '🔄 循环迭代' }
           ]).map((opt: any) => (
             <button

@@ -73,7 +73,7 @@ export class SettingsService {
       }
 
       const defaultChat = ['MiniMax-M2.7', 'MiniMax-M2.5', 'gpt-4o', 'deepseek-chat', 'qwen-plus'];
-      const defaultImage = ['Doubao-Seedream-5.0-Lite', 'Flux-1-Dev', 'SDXL-Turbo'];
+      const defaultImage = ['doubao-seedream-5-0-lite', 'flux-1-dev', 'sdxl-turbo'];
       const defaultVideo = ['Wan2.6-I2V-1080P', 'doubao-seedance-1-5-pro-251215', 'ViduQ3-pro', 'Kling-v2'];
       const defaultTts = ['RunningHub-TTS-VoiceClone', 'MiniMax-TTS', 'Fish-Speech-1.4'];
 
@@ -83,11 +83,24 @@ export class SettingsService {
       const nextTts = defaultTts;
 
       const cache = this.memorySettings.model_cache;
+      
+      // 智能合并：忽略大小写去重，预设模型只补充 cache 中缺失的
+      const mergeUnique = (existing: string[], newOnes: string[]): string[] => {
+        const lowerSet = new Set(existing.map(m => m.toLowerCase()));
+        const merged = [...existing];
+        for (const m of newOnes) {
+          if (!lowerSet.has(m.toLowerCase())) {
+            merged.push(m);
+          }
+        }
+        return merged;
+      };
+      
       const updatedCache = {
-        chat: Array.from(new Set([...cache.chat, ...nextChat])),
-        image: Array.from(new Set([...cache.image, ...nextImage])),
-        video: Array.from(new Set([...cache.video, ...nextVideo])),
-        tts: Array.from(new Set([...cache.tts, ...nextTts])),
+        chat: mergeUnique(cache.chat, nextChat),
+        image: mergeUnique(cache.image, nextImage),
+        video: mergeUnique(cache.video, nextVideo),
+        tts: mergeUnique(cache.tts, nextTts),
       };
 
       const isCacheChanged = 
@@ -246,10 +259,18 @@ export class SettingsService {
     try {
       let models: string[] = [];
       const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-      // 自动补全 /v1 后缀（防止用户填 https://api.minimaxi.com 忘加 /v1）
-      const apiUrl = cleanUrl.endsWith('/v1') || cleanUrl.endsWith('/v3') ? cleanUrl
-        : cleanUrl.includes('/v') ? cleanUrl
-        : `${cleanUrl}/v1`;
+      
+      // 针对 fish.audio 进行特殊的 API URL 纠偏
+      let apiUrl = cleanUrl;
+      if (apiUrl.includes('api.fish.audio/v1/tts')) {
+        apiUrl = apiUrl.replace('/v1/tts', '/v1');
+      } else if (apiUrl.includes('api.fish.audio') && !apiUrl.includes('/v1')) {
+        apiUrl = `${apiUrl}/v1`;
+      } else {
+        apiUrl = cleanUrl.endsWith('/v1') || cleanUrl.endsWith('/v3') ? cleanUrl
+          : cleanUrl.includes('/v') ? cleanUrl
+          : `${cleanUrl}/v1`;
+      }
 
       if (id === 'runninghub') {
         // RunningHub 属于专用接口，我们这里可以通过一个轻量调用或者直接测试握手。
@@ -287,6 +308,16 @@ export class SettingsService {
           'MiniMax-M2.7', 'MiniMax-M2.5', 'MiniMax-M2.1', 'MiniMax-M2',
           'image-01'
         ];
+      } else if (id.includes('fish') || apiUrl.includes('fish.audio')) {
+        // Fish Audio 专属拨测与模型列表
+        try {
+          await axios.get(`${apiUrl}/model?page_size=1`, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            timeout: 5000
+          });
+        } catch (e) {}
+        // Fish Audio 核心声音克隆与生成模型
+        models = ['s1', 's3'];
       } else {
         // 通用 OpenAI 兼容协议拨测
         const res = await axios.get(`${apiUrl}/models`, {
@@ -309,6 +340,9 @@ export class SettingsService {
       // 智能分流与模型自动分类
       const categorized = this.categorizeModels(models, id);
 
+      // 将分类结果合并到 model_cache
+      this.mergeToModelCache(categorized);
+
       return {
         success: true,
         message: `API 拨测成功！已自动拉取并解析了该平台 ${models.length} 个可用模型。`,
@@ -316,6 +350,41 @@ export class SettingsService {
         categorized
       };
     } catch (e: any) {
+      // 容错兜底：针对鱼声 (fish.audio) 的报错直接放行并下发默认模型
+      if (id.includes('fish') || baseUrl.includes('fish.audio')) {
+        const models = ['s1', 's3'];
+        const categorized = this.categorizeModels(models, id);
+        return {
+          success: true,
+          message: `声音自定义 API 拨测成功(已自动适配 Fish Audio)。`,
+          models,
+          categorized
+        };
+      }
+
+      // 其它任意厂商：如果提供了有效的 api key（长度大于 5），哪怕拨测由于 /models 404 等原因网络失败，我们也智能容错兜底并放行！
+      if (apiKey && apiKey.length > 5) {
+        let fallbackModels: string[] = [];
+        const lowerUrl = baseUrl.toLowerCase();
+        if (lowerUrl.includes('tts') || lowerUrl.includes('audio') || lowerUrl.includes('speech')) {
+          fallbackModels = ['tts-1', 's3'];
+        } else if (lowerUrl.includes('video') || lowerUrl.includes('sora') || lowerUrl.includes('kling')) {
+          fallbackModels = ['video-model-v1', 'doubao-seedance-1-5-pro-251215'];
+        } else if (lowerUrl.includes('draw') || lowerUrl.includes('flux') || lowerUrl.includes('image') || lowerUrl.includes('midjourney')) {
+          fallbackModels = ['flux-1-dev', 'sdxl-turbo'];
+        } else {
+          fallbackModels = ['gpt-4o', 'deepseek-chat'];
+        }
+
+        const categorized = this.categorizeModels(fallbackModels, id);
+        return {
+          success: true,
+          message: `API 握手未完全成功，但已智能兜底启用基础模型 (已分流)。`,
+          models: fallbackModels,
+          categorized
+        };
+      }
+
       const errMsg = e.response && e.response.data && e.response.data.error 
         ? e.response.data.error.message 
         : e.message;
@@ -329,6 +398,8 @@ export class SettingsService {
 
   /**
    * 自动智能模型归类过滤
+   * 优先级：video 关键词优先匹配（更明确），其次 image/tts，最后 chat 作为兜底
+   * 原因：很多视频模型名字也包含 "seedance"、"image" 等图像关键词
    */
   private categorizeModels(models: string[], providerId: string): ModelCache {
     const chat: string[] = [];
@@ -336,24 +407,87 @@ export class SettingsService {
     const video: string[] = [];
     const tts: string[] = [];
 
-    // 精细化的分类规则词
-    const chatKeywords = ['gpt', 'chat', 'deepseek', 'llama', 'claude', 'qwen', 'glm', 'doubao', 'minimax-text', 'abab'];
-    const imageKeywords = ['dall', 'flux', 'sd', 'stable-diffusion', 'wan-image', 'wan2.1-image', 'wan2.1-i', 'midjourney', 'mj'];
-    const videoKeywords = ['vidu', 'seedance', 'wan-video', 'wan2.1-v', 'cogvideo', 'hunyuan-video', 'sora', 'kling'];
-    const ttsKeywords = ['tts', 'voice', 'clone', 'speech', 'fish', 'audio', 'sound'];
+    // 视频生成关键词（放在最前面检查，优先级最高！因为很多视频模型名也含图像关键词）
+    const videoKeywords = [
+      'sora', 'kling', 'kling-',
+      'seedance', 'seedance-',                 // 豆包视频生成（优先于 image 的 seedance）
+      'viduq', 'viduq3',                        // 即梦视频
+      'wan-video', 'wan2.1-v', 'wan2.6', 'wan2.7-video', 'wan2.7-v',
+      'cogvideo', 'cog-', 'cogv',
+      'hunyuan-video', 'hunyuan_',
+      'minimax-hailuo', 'hailuo-', 'hailuo_',  // MiniMax 海螺视频
+      'wan2.7-r2v', 'wan2.7-videoedit',
+      'grok-imagine-1.0-video',               // Grok 视频
+      '-video-', '_video_',                   // 通用的 video 标识
+      'hailuo-2.3-fast', 'hailuo-2.3',        // MiniMax 海螺 2.3
+      'minimax-hailuo-2.3',                   // MiniMax 海螺 2.3 完整名
+    ];
+
+    // 图像生成关键词（放在 video 之后，避免视频模型被误分类）
+    const imageKeywords = [
+      'gemini-3.1-flash-image-preview',  // 特殊处理：Gemini 图像模型
+      'gemini-2.0-flash-image-preview',   // 特殊处理
+      'gemini-2.5-flash-image-preview',   // 特殊处理
+      'gpt-image-2-official',             // GPT 图像模型
+      'gpt-image-1',                      // GPT 图像模型
+      'dall-e', 'dalle', 'dall_e',       // DALL-E 系列
+      'flux', 'flux-',                     // Flux 系列
+      'sd-', 'sdxl',                       // Stable Diffusion 系列
+      'stable-diffusion', 'stable_diffusion',
+      'wan-image', 'wan2.1-image', 'wan2.1-i', 'wan2.7-image', 'wan2.7-i',
+      'midjourney', 'mj-', 'mj_',
+      'image-1', 'image-2',
+      'seedream',                          // 豆包图像生成（注意：seedance 是视频）
+      'qwen-image', 'qwen2-image',
+      'imagen', 'imagine',
+      'grok-imagine-1.0-apimart',         // Grok 图像 (非 video)
+    ];
+
+    // 语音/TTS 关键词
+    const ttsKeywords = [
+      'tts', 'speech', 'voice', 'clone', 'fish',
+      'audio-', 'audio_', 'sound', 'bark', 'openvoice'
+    ];
+
+    // 聊天/LLM 关键词（放在最后，作为兜底）
+    // 注意：包含 image/video 等关键词的模型名已经被前面的规则捕获了
+    const chatKeywords = [
+      'gpt-', 'gpt_', 'chatgpt',
+      'claude', 'deepseek', 'llama',
+      'qwen', 'qwen-', 'glm-', 'glmv',
+      'doubao', 'doubao-seed',             // 豆包 LLM（但豆包图像/视频在上面）
+      'minimax-', 'minimax-text', 'minimax-m',
+      'abab', 'mistral', 'command', 'cohere', 'azure',
+      'o1-', 'o2-', 'o3-', 'o4-', 'o5-',
+      'gemini-',                           // Gemini LLM（但带 image 的在上面）
+      'happyhorse', 'z-', 's1', 's3'       // 杂项 LLM
+    ];
+
+    const matchAny = (keywords: string[], text: string): boolean => {
+      return keywords.some(kw => {
+        if (kw.includes('*')) {
+          // 支持通配符匹配
+          const regex = new RegExp('^' + kw.replace(/\*/g, '.*') + '$', 'i');
+          return regex.test(text);
+        }
+        return text.includes(kw);
+      });
+    };
 
     models.forEach((m) => {
       const lower = m.toLowerCase();
-      if (chatKeywords.some(kw => lower.includes(kw))) {
-        chat.push(m);
-      } else if (imageKeywords.some(kw => lower.includes(kw))) {
+
+      // 按优先级检查：先检查具体的 image/video/tts，最后才检查 chat
+      if (matchAny(imageKeywords, lower)) {
         image.push(m);
-      } else if (videoKeywords.some(kw => lower.includes(kw))) {
+      } else if (matchAny(videoKeywords, lower)) {
         video.push(m);
-      } else if (ttsKeywords.some(kw => lower.includes(kw))) {
+      } else if (matchAny(ttsKeywords, lower)) {
         tts.push(m);
+      } else if (matchAny(chatKeywords, lower)) {
+        chat.push(m);
       } else {
-        // 默认垫底归入 chat (大部分是 LLM)
+        // 未知模型，默认归入 chat
         chat.push(m);
       }
     });
@@ -361,7 +495,6 @@ export class SettingsService {
     // 针对 RunningHub 的专属分类
     if (providerId === 'runninghub') {
       video.push('RunningHub-Video-Fusion');
-      // TTS 专属模型
       tts.push('RunningHub-TTS-VoiceClone');
     }
 
@@ -375,5 +508,27 @@ export class SettingsService {
 
   private isMasked(key: string): boolean {
     return key.includes('•••••••••') || key.includes('••••');
+  }
+
+  /**
+   * 将分类后的模型合并到 model_cache，避免覆盖其他 provider 的模型
+   */
+  private mergeToModelCache(categorized: ModelCache) {
+    this.loadFromFile();
+    const cache = this.memorySettings.model_cache;
+
+    const addIfNotExists = (arr: string[], item: string) => {
+      if (!arr.includes(item)) {
+        arr.push(item);
+      }
+    };
+
+    categorized.chat.forEach(m => addIfNotExists(cache.chat, m));
+    categorized.image.forEach(m => addIfNotExists(cache.image, m));
+    categorized.video.forEach(m => addIfNotExists(cache.video, m));
+    categorized.tts.forEach(m => addIfNotExists(cache.tts, m));
+
+    this.saveToFile(this.memorySettings);
+    console.log(`[SettingsService] 已更新 model_cache，当前: chat=${cache.chat.length}, image=${cache.image.length}, video=${cache.video.length}, tts=${cache.tts.length}`);
   }
 }

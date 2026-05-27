@@ -115,18 +115,50 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
 
   const providerId = data.inputs?.providerId || 'minimax';
 
+  // 动态聚合并显示所有已开启的内置和自定义 API 服务商
+  const activeProviders = useMemo(() => {
+    if (!settings || !settings.providers) {
+      return [
+        { id: 'minimax', name: 'MiniMax (海螺AI)', icon: '🐚' },
+        { id: 'deepseek', name: 'DeepSeek', icon: '🐋' },
+        { id: 'openai', name: 'OpenAI', icon: '🧠' },
+        { id: 'ali', name: '阿里通义千问', icon: '☁️' },
+        { id: 'volcengine', name: '火山引擎', icon: '🌋' }
+      ];
+    }
+    const builtInIcons: Record<string, string> = {
+      minimax: '🐚', deepseek: '🐋', openai: '🧠', ali: '☁️', volcengine: '🌋', runninghub: '⚡'
+    };
+    return Object.keys(settings.providers)
+      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // LLM 剧本节点不需要将 RunningHub 作为常规 API 服务商展示
+      .map(pid => ({
+        id: pid,
+        name: settings.providers[pid].name || pid,
+        icon: settings.providers[pid].icon || builtInIcons[pid] || '🔌'
+      }));
+  }, [settings]);
+
   const currentProviderModels = useMemo(() => {
     const defaultModels = DEFAULT_PROVIDER_LLM_MODELS[providerId] || chatModels;
     if (!settings || !settings.providers || !settings.providers[providerId]) {
       return defaultModels;
     }
     const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models)) {
+    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
       return defaultModels;
     }
+    
+    // 核心重构：与大仓中已勾选的聊天模型进行求交集，实现真正的模型点选分类过滤
+    const cachedChatModels = settings.model_cache?.chat || [];
+    const filtered = provider.models.filter((m: string) => cachedChatModels.includes(m));
+    if (filtered.length > 0) {
+      return filtered;
+    }
+
+    // 降级：如果交集为空，才使用默认的正则分类过滤
     const llmKeywords = /gpt|claude|qwen|deepseek|minimax|doubao|glm|chat|llm/i;
-    const filtered = provider.models.filter((m: string) => llmKeywords.test(m));
-    return filtered.length > 0 ? filtered : defaultModels;
+    const regexFiltered = provider.models.filter((m: string) => llmKeywords.test(m));
+    return regexFiltered.length > 0 ? regexFiltered : provider.models;
   }, [settings, providerId, chatModels]);
 
   const model = data.inputs?.model || currentProviderModels[0] || 'MiniMax-M2.7';
@@ -343,7 +375,10 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
         id="input"
         style={{
           ...handleStyle,
-          left: '-12px'
+          left: '-12px',
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'all' : 'none',
+          visibility: selected ? 'visible' : 'hidden'
         }}
       >
         ＋
@@ -430,11 +465,9 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
                 outline: 'none'
               }}
             >
-              <option value="minimax">MiniMax (海螺AI)</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="openai">OpenAI</option>
-              <option value="ali">阿里通义千问</option>
-              <option value="volcengine">火山引擎</option>
+              {activeProviders.map(p => (
+                <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -715,7 +748,10 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
         id="output"
         style={{
           ...handleStyle,
-          right: '-12px'
+          right: '-12px',
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'all' : 'none',
+          visibility: selected ? 'visible' : 'hidden'
         }}
       >
         ＋

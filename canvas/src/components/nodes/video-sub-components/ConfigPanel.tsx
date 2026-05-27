@@ -16,6 +16,8 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
     connectedPrompt,
     isPromptConnected,
     providerId,
+    activeProviders = [],
+    settings = null,
     activeTab,
     videoModeTab,
     fusing,
@@ -55,9 +57,11 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
   return (
     <div
       className="nodrag"
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
-        top: 'calc(100% + 12px)', // 完美贴合节点正下方，绝无任何物理重合遮挡
+        top: 'calc(100% + 12px)', // 完美贴合节点正下方，绝无 any 物理重合遮挡
         left: '50%',
         transform: 'translateX(-50%)',
         width: '580px',
@@ -498,7 +502,12 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
       {/* Popover 1: 模型选择 (级联) */}
       {activePopover === 'model' && (
-        <div className="popover-floating-card" style={{ width: '220px', left: '15%' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '220px', left: '15%' }}
+        >
           {activeTab === 'aix' ? (
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '6px' }}>
               💡 云端工作流已由模版配置托管，无需在节点端设置物理视频大模型。
@@ -509,58 +518,69 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
                 🤖 视频生成大模型服务商
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-                {[
-                  { id: 'volcengine', label: '火山引擎 (Seedance)' },
-                  { id: 'vidu', label: 'Vidu 视频' },
-                  { id: 'minimax', label: '海螺视频' },
-                  { id: 'ali', label: '通义万相' }
-                ].map(v => (
-                  <div 
-                    key={v.id}
-                    className={`hover-vendor-item ${activeVendor === v.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveVendor(v.id as any);
-                      handleInputChange('providerId', v.id);
-                      const providerModels = DEFAULT_PROVIDER_VIDEO_MODELS[v.id] || [];
-                      handleInputChange('model', providerModels[0]);
-                    }}
-                  >
-                    <span>{v.label.replace(' (Seedance)', '')}</span>
-                    <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+                {activeProviders.map(v => {
+                  const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_VIDEO_MODELS[v.id] || [];
+                  const isBuiltIn = ['vidu', 'volcengine', 'minimax', 'ali', 'deepseek', 'runninghub'].includes(v.id);
+                  const filtered = isBuiltIn 
+                    ? providerModels.filter((m: string) => /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma|kling|hailuo/i.test(m))
+                    : providerModels;
+                  const finalModels = filtered.length > 0 ? filtered : providerModels;
 
-                    {/* 二级级联模型列表 */}
-                    <div className="sub-model-list-hover">
-                      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                        选择具体视频模型：
+                  return (
+                    <div 
+                      key={v.id}
+                      className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
+                      onClick={() => {
+                        handleInputChange('providerId', v.id);
+                        handleInputChange('model', finalModels[0] || '');
+                      }}
+                    >
+                      <span>{v.label}</span>
+                      <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+
+                      {/* 二级级联模型列表 */}
+                      <div className="sub-model-list-hover">
+                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
+                          选择具体视频模型：
+                        </div>
+                        {finalModels.map((m: string) => (
+                          <button
+                            key={m}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleInputChange('providerId', v.id);
+                              handleInputChange('model', m);
+                              setActivePopover(null);
+                            }}
+                            style={{
+                              background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
+                              fontSize: '9.5px',
+                              padding: '4px 6px',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              width: '100%',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
+                            onMouseLeave={(e) => {
+                              if (model !== m) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                        {finalModels.length === 0 && (
+                          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', padding: '8px', textAlign: 'center' }}>
+                            暂无可用模型
+                          </div>
+                        )}
                       </div>
-                      {(DEFAULT_PROVIDER_VIDEO_MODELS[v.id] || []).map(m => (
-                        <button
-                          key={m}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveVendor(v.id as any);
-                            handleInputChange('providerId', v.id);
-                            handleInputChange('model', m);
-                            setActivePopover(null);
-                          }}
-                          style={{
-                            background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            border: 'none',
-                            borderRadius: '4px',
-                            color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                            fontSize: '9.5px',
-                            padding: '4px 6px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            width: '100%'
-                          }}
-                        >
-                          {m}
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -569,7 +589,12 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
       {/* Popover 2: 工作模式 */}
       {activePopover === 'mode' && (
-        <div className="popover-floating-card" style={{ width: '200px', left: '25%' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '200px', left: '25%' }}
+        >
           <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             ⚙️ 切换视频创作模式
           </div>
@@ -616,7 +641,12 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
       {/* Popover 3: 规格尺寸与生成参数 */}
       {activePopover === 'specs' && (
-        <div className="popover-floating-card" style={{ width: '310px', left: '40%' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '310px', left: '40%' }}
+        >
           <div style={{ fontSize: '10.5px', fontWeight: 'bold', color: 'rgba(255,255,255,0.5)', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             📐 规格尺寸与生成参数
           </div>
@@ -805,7 +835,9 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
       {/* Popover 4: 模式共享的参考素材画廊 (重定位到右侧，绝不遮挡节点本体) */}
       {activePopover === 'gallery' && (
         <div 
-          className="popover-floating-card gallery-popover-right" 
+          className="popover-floating-card gallery-popover-right nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
           style={{ 
             width: '310px', 
             left: 'calc(50% + 102px)', 
@@ -957,7 +989,12 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
       {/* Popover 5: aix 模式下的云端工作流配置 */}
       {activePopover === 'workflow' && (
-        <div className="popover-floating-card" style={{ width: '280px', left: '15%', maxHeight: '280px', overflowY: 'auto' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '280px', left: '15%', maxHeight: '280px', overflowY: 'auto' }}
+        >
           {data.inputs?.customTemplate ? (
             <>
               <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>

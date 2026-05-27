@@ -174,22 +174,57 @@ export function useTTSNodeLogic({
     loadSettings();
   }, []);
 
-  // 7. 大语言音频服务商可选模型联动列表
+  // 动态聚合并过滤出所有已启用的内置及自定义 API 厂商
+  const activeProviders = useMemo(() => {
+    if (!settings || !settings.providers) {
+      return [
+        { id: 'minimax', label: 'MiniMax (海螺)' },
+        { id: 'openai', label: 'OpenAI (官方)' },
+        { id: 'volcengine', label: '火山引擎 (豆包)' },
+        { id: 'suno', label: 'Suno (AI 音乐)' }
+      ];
+    }
+    const builtInLabels: Record<string, string> = {
+      minimax: 'MiniMax (海螺)',
+      openai: 'OpenAI (官方)',
+      volcengine: '火山引擎 (豆包)',
+      suno: 'Suno (AI 音乐)',
+      deepseek: 'DeepSeek',
+      runninghub: 'RunningHub'
+    };
+    return Object.keys(settings.providers)
+      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // TTS 音频节点不需要将 RunningHub 作为常规 API 服务商展示
+      .map(pid => ({
+        id: pid,
+        label: settings.providers[pid].name || builtInLabels[pid] || pid
+      }));
+  }, [settings]);
+
+  // 大语言音频服务商可选模型联动列表
   const currentProviderModels = useMemo(() => {
     const defaultModels = DEFAULT_PROVIDER_TTS_MODELS[providerId] || [];
     if (!settings || !settings.providers || !settings.providers[providerId]) {
       return defaultModels;
     }
     const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models)) {
+    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
       return defaultModels;
     }
-    const ttsKeywords = ['tts', 'speech', 'voice', 'clone', 'fish', 'sound', 'talk', 'suno', 'music'];
-    const filtered = provider.models.filter((m: string) => {
+    
+    // 核心重构：与大仓中已勾选的音频模型进行求交集，实现真正的模型点选分类过滤
+    const cachedTtsModels = settings.model_cache?.tts || [];
+    const filtered = provider.models.filter((m: string) => cachedTtsModels.includes(m));
+    if (filtered.length > 0) {
+      return filtered;
+    }
+
+    // 降级：如果交集为空，才使用默认的正则分类过滤
+    const ttsKeywords = ['tts', 'speech', 'voice', 'clone', 'fish', 'sound', 'talk', 'suno', 'music', 'audio'];
+    const regexFiltered = provider.models.filter((m: string) => {
       const lowerM = m.toLowerCase();
       return ttsKeywords.some(kw => lowerM.includes(kw));
     });
-    return filtered.length > 0 ? filtered : defaultModels;
+    return regexFiltered.length > 0 ? regexFiltered : provider.models;
   }, [settings, providerId]);
 
   const model = data.inputs?.model || currentProviderModels[0] || 'fish-speech-1.4';
@@ -484,8 +519,9 @@ export function useTTSNodeLogic({
           return;
         }
 
-        if (providerId !== 'suno' && !currentRefAudio) {
-          alert('请上传或拖入一段 10 秒以上的声音克隆参考音频！');
+        const referenceId = data.inputs?.referenceId || '';
+        if (providerId !== 'suno' && !currentRefAudio && !referenceId.trim()) {
+          alert('请上传或拖入一段声音克隆参考音频，或者直接填写「声音ID (reference_id)」！');
           setCloning(false);
           return;
         }
@@ -499,6 +535,7 @@ export function useTTSNodeLogic({
             text: finalText,
             providerId: providerId,
             model: model,
+            referenceId: referenceId, // 无损传递音色声音 ID (reference_id)
             mode: mode,
             workflowIdOrJson: workflowIdOrJson
           })
@@ -614,6 +651,7 @@ export function useTTSNodeLogic({
     // 基础输入及配置状态
     mode,
     providerId,
+    activeProviders,
     characterName,
     refAudio,
     currentRefAudio,

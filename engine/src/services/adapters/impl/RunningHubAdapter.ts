@@ -149,7 +149,7 @@ export class RunningHubAdapter {
       const minioOk = await this.uploadToMinio(uniqueName, fileBuffer);
       const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
       if (minioOk) {
-        downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:19000/workflows/${encodeURIComponent(uniqueName)}`;
+        downloadedUrl = `http://localhost:19000/workflows/${uniqueName}`;
       } else {
         downloadedUrl = `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${encodeURIComponent(uniqueName)}`;
       }

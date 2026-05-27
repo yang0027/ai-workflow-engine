@@ -10,11 +10,13 @@ const __dirname = path.dirname(__filename);
 const OUTPUTS_DIR = path.resolve(__dirname, '../../../data/outputs');
 
 export interface TTSCloneRequest {
-  audioBase64: string;
+  audioBase64?: string;
   characterName: string;
   text?: string; // 台词
   workflowId?: string; // 可选的 ComfyUI 工作流 ID
   providerId?: string; // 选取的第三方音频 API，如 'fishaudio'，'grsai'，'minimax' 等
+  model?: string; // 选取的模型，如 's1'，'s3'，'tts-clone-pro' 等
+  referenceId?: string; // 新增自定义音色 ID (reference_id)
   mode?: 'direct' | 'comfy'; // 'direct' 表示直接向第三方专用 API 发起 cURL HTTP 请求，'comfy' 表示走 ComfyUI
 }
 
@@ -49,11 +51,13 @@ export class TTSService {
    */
   public async cloneVoice(req: TTSCloneRequest): Promise<{ taskId: string; seed: number; audioUrl?: string; direct?: boolean }> {
     const { 
-      audioBase64, 
+      audioBase64 = '', 
       characterName, 
       text = '大家好，我是 Toonflow 声音克隆助理。', 
       workflowId = this.defaultWorkflowId,
       providerId = 'runninghub',
+      model,
+      referenceId,
       mode = 'comfy' 
     } = req;
 
@@ -83,15 +87,37 @@ export class TTSService {
           const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
           const ttsUrl = cleanUrl.includes('/v1') ? `${cleanUrl}/tts` : `${cleanUrl}/v1/tts`;
 
-          console.log(`[TTSService] Sending cURL POST request to Fish Audio: ${ttsUrl}`);
+          // 核心重构：支持前端友好显示名称（如 fish-speech-1.4）与后端物理 API 真实 ID（s1/s3）的自愈映射自锁
+          let finalModel = model || 's3';
+          const lowerM = finalModel.toLowerCase();
+          if (lowerM.includes('1.4') || lowerM.includes('s1')) {
+            finalModel = 's1';
+          } else if (lowerM.includes('1.5') || lowerM.includes('s3')) {
+            finalModel = 's3';
+          }
 
-          // 构建 Fish Audio API 负载 (使用标准 RESTful 格式)
-          const response = await axios.post(ttsUrl, {
+          console.log(`[TTSService] Sending cURL POST request to Fish Audio: ${ttsUrl}, model: ${finalModel}`);
+
+          // 构建 Fish Audio API 智能负载
+          const payload: any = {
             text: text,
-            reference_audio: cleanBase64,
             normalize: true,
-            format: 'mp3'
-          }, {
+            format: 'mp3',
+            model: finalModel
+          };
+
+          if (referenceId && referenceId.trim()) {
+            payload.reference_id = referenceId.trim();
+            console.log(`[TTSService] Using reference_id (Voice ID): ${referenceId.trim()}`);
+          } else if (audioBase64) {
+            const cleanBase64 = audioBase64.replace(/^data:audio\/[a-zA-Z0-9]+;base64,/, '');
+            payload.reference_audio = cleanBase64;
+            console.log(`[TTSService] Using zero-shot reference_audio Base64`);
+          } else {
+            throw new Error('零样本提示音频 与 声音ID (reference_id) 不能同时为空。');
+          }
+
+          const response = await axios.post(ttsUrl, payload, {
             headers: {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json'
@@ -122,8 +148,8 @@ export class TTSService {
           // 其他三方 API Direct 调用
           const response = await axios.post(`${baseUrl}/v1/tts/generate`, {
             text: text,
-            voice_ref: cleanBase64,
-            model: 'tts-clone-pro'
+            voice_ref: audioBase64.replace(/^data:audio\/[a-zA-Z0-9]+;base64,/, ''),
+            model: model || 'tts-clone-pro' // 优先使用用户在节点中选中的大模型名字
           }, {
             headers: { 'Authorization': `Bearer ${apiKey}` },
             responseType: 'arraybuffer',

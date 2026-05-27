@@ -49,6 +49,8 @@ export interface ConfigPanelProps {
   id: string;
   data: any;
   providerId: string;
+  activeProviders?: Array<{ id: string; label: string }>;
+  settings?: any;
   size: string;
   cfg: number;
   steps: number;
@@ -85,6 +87,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
   id,
   data,
   providerId,
+  activeProviders = [],
+  settings = null,
   size,
   cfg,
   steps,
@@ -236,6 +240,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
       <div
         ref={containerRef}
         className="nodrag"
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
           top: '190px', // 紧贴 180px 卡片底部，10px 边距无缝组合
@@ -643,74 +649,92 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
         {/* Popover 1: 模型厂商及 Hover 级联 */}
         {activePopover === 'model' && (
-          <div className="popover-floating-card" style={{ width: '220px', left: '15%' }}>
+          <div 
+            className="popover-floating-card nodrag" 
+            onMouseDown={(e) => e.stopPropagation()} 
+            onTouchStart={(e) => e.stopPropagation()} 
+            style={{ width: '220px', left: '15%' }}
+          >
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               🌐 大模型生图驱动商
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {[
-                { id: 'minimax', label: 'MiniMax (海螺)' },
-                { id: 'ali', label: '通义万相 (Ali)' },
-                { id: 'volcengine', label: '火山引擎 (豆包)' },
-                { id: 'openai', label: 'OpenAI (DallE)' }
-              ].map(v => (
-                <div 
-                  key={v.id} 
-                  className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
-                  onClick={() => {
-                    handleInputChange('providerId', v.id);
-                    const providerModels = DEFAULT_PROVIDER_IMAGE_MODELS[v.id] || [];
-                    handleInputChange('model', providerModels[0]);
-                  }}
-                >
-                  <span>{v.label}</span>
-                  <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+              {activeProviders.map(v => {
+                const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_IMAGE_MODELS[v.id] || [];
+                const isBuiltIn = ['minimax', 'ali', 'volcengine', 'openai', 'deepseek', 'runninghub'].includes(v.id);
+                const filtered = isBuiltIn 
+                  ? providerModels.filter((m: string) => ['image', 'wanx', 'seedream', 'dall-e', 'flux', 'sdxl', 'stable-diffusion', 'illustrate', 'paint', 'imagine', 'kling'].some(kw => m.toLowerCase().includes(kw)))
+                  : providerModels;
+                const finalModels = filtered.length > 0 ? filtered : providerModels;
 
-                  {/* 二级级联 */}
-                  <div className="sub-model-list-hover">
-                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                      选择具体模型：
+                return (
+                  <div 
+                    key={v.id} 
+                    className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
+                    onClick={() => {
+                      handleInputChange('providerId', v.id);
+                      handleInputChange('model', finalModels[0] || '');
+                    }}
+                  >
+                    <span>{v.label}</span>
+                    <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+
+                    {/* 二级级联 */}
+                    <div className="sub-model-list-hover">
+                      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
+                        选择具体模型：
+                      </div>
+                      {finalModels.map((m: string) => (
+                        <button
+                          key={m}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInputChange('providerId', v.id);
+                            handleInputChange('model', m);
+                            setActivePopover(null);
+                          }}
+                          style={{
+                            background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                            border: 'none',
+                            borderRadius: '4px',
+                            color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
+                            fontSize: '9.5px',
+                            padding: '4px 6px',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            width: '100%',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
+                          onMouseLeave={(e) => {
+                            if (model !== m) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                      {finalModels.length === 0 && (
+                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', padding: '8px', textAlign: 'center' }}>
+                          暂无可用模型
+                        </div>
+                      )}
                     </div>
-                    {(DEFAULT_PROVIDER_IMAGE_MODELS[v.id] || []).map((m: string) => (
-                      <button
-                        key={m}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleInputChange('providerId', v.id);
-                          handleInputChange('model', m);
-                          setActivePopover(null);
-                        }}
-                        style={{
-                          background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                          fontSize: '9.5px',
-                          padding: '4px 6px',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          width: '100%',
-                          transition: 'all 0.15s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
-                        onMouseLeave={(e) => {
-                          if (model !== m) e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Popover 2: 参数控制面板 */}
         {activePopover === 'specs' && (
-          <div className="popover-floating-card" style={{ width: '380px', left: '50%', transform: 'translateX(-50%)' }}>
+          <div 
+            className="popover-floating-card nodrag" 
+            onMouseDown={(e) => e.stopPropagation()} 
+            onTouchStart={(e) => e.stopPropagation()} 
+            style={{ width: '380px', left: '50%', transform: 'translateX(-50%)' }}
+          >
             <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>
               <span>📐 参数控制面板</span>
             </div>
@@ -803,7 +827,9 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
         {/* Popover 4: 画廊弹窗 */}
         {activePopover === 'gallery' && (
           <div 
-            className="popover-floating-card gallery-popover-right" 
+            className="popover-floating-card gallery-popover-right nodrag" 
+            onMouseDown={(e) => e.stopPropagation()} 
+            onTouchStart={(e) => e.stopPropagation()} 
             style={{ 
               width: '310px', 
               left: 'calc(50% + 102px)', 
@@ -930,7 +956,12 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
           });
 
           return (
-            <div className="popover-floating-card" style={{ width: '280px', left: '15%' }}>
+            <div 
+              className="popover-floating-card nodrag" 
+              onMouseDown={(e) => e.stopPropagation()} 
+              onTouchStart={(e) => e.stopPropagation()} 
+              style={{ width: '280px', left: '15%' }}
+            >
               <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>
                 ⚙️ 自定义参数设置
               </div>

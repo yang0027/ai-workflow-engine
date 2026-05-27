@@ -29,7 +29,7 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
 
   return (
     <div
-      className="relative text-left"
+      className="relative text-left custom-workflow-node-container"
       style={{
         position: 'relative',
         width: '180px',
@@ -537,22 +537,22 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
 
       {/* 嵌入高阶 CSS */}
       <style>{`
-        .react-flow__handle {
+        .custom-workflow-node-container .react-flow__handle {
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
-        .react-flow__handle:hover {
+        .custom-workflow-node-container .react-flow__handle:hover {
           transform: translateY(-50%) scale(1.3) !important;
           background: rgba(168, 85, 247, 1) !important;
           border-color: #fff !important;
           box-shadow: 0 0 18px rgba(168, 85, 247, 0.95) !important;
         }
-        .react-flow__handle::after {
+        .custom-workflow-node-container .react-flow__handle::after {
           content: '';
           position: absolute;
-          top: -14px;
-          left: -14px;
-          right: -14px;
-          bottom: -14px;
+          top: -4px;
+          left: -4px;
+          right: -4px;
+          bottom: -4px;
           border-radius: 50%;
           background: transparent;
           cursor: crosshair;
@@ -582,7 +582,10 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
             top: `${((idx + 1) * 100) / (mappings.length + 1)}%`,
             transform: 'translateY(-50%)',
             boxShadow: logic.isPortConnected(map.portId) ? '0 0 8px rgba(168, 85, 247, 0.65)' : 'none',
-            zIndex: 10
+            zIndex: 10,
+            opacity: selected ? 1 : 0,
+            pointerEvents: selected ? 'all' : 'none',
+            visibility: selected ? 'visible' : 'hidden'
           }}
           title={map.displayName || map.portId}
         />
@@ -603,7 +606,10 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
           top: '50%',
           transform: 'translateY(-50%)',
           boxShadow: outputUrl ? '0 0 8px rgba(168, 85, 247, 0.65)' : 'none',
-          zIndex: 10
+          zIndex: 10,
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'all' : 'none',
+          visibility: selected ? 'visible' : 'hidden'
         }}
       />
     </div>

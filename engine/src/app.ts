@@ -19,7 +19,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ 
+  logger: true,
+  bodyLimit: 52428800 // 50MB 物理大载荷支持
+});
 
 // 注册 CORS，允许前端 5173 端口访问
 await fastify.register(cors, {
@@ -122,9 +125,72 @@ fastify.get('/outputs/:filename', async (request, reply) => {
     else if (ext === '.gif') mime = 'image/gif';
     else if (ext === '.webp') mime = 'image/webp';
     else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
-    return reply.type(mime).send(stream);
+    return reply
+      .type(mime)
+      .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(stream);
   }
   return reply.status(404).send({ error: 'File not found' });
+});
+
+// ============ 通用多媒体文件上传 MinIO (带本地灾备与 MimeType 识别) ============
+fastify.post('/api/v1/engine/upload', async (request, reply) => {
+  try {
+    const body = request.body as any || {};
+    const file = body.file || body.fileBase64;
+    const filename = body.filename || body.fileName;
+
+    if (!file || !filename) {
+      return reply.status(400).send({ error: 'Missing file base64 or filename' });
+    }
+
+    // 1. 提取纯 Base64 并物理落地到本地 outputs 作为灾备降级
+    const cleanBase64 = file.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    
+    // 生成带时间戳的唯一文件名，防止重名覆盖
+    const ext = path.extname(filename) || '.png';
+    const uniqueFilename = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 8)}${ext}`;
+    
+    const outputDir = path.resolve(__dirname, '../data/outputs');
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const filePath = path.join(outputDir, uniqueFilename);
+    fs.writeFileSync(filePath, buffer);
+    console.log(`[Engine Upload] 📁 文件本地物理灾备落地成功: ${filePath}`);
+
+    // 2. 识别 MIME 类型以便 MinIO 能正确返回 Content-Type
+    let mimeType = 'image/png';
+    const lowerExt = ext.toLowerCase();
+    if (lowerExt === '.jpg' || lowerExt === '.jpeg') mimeType = 'image/jpeg';
+    else if (lowerExt === '.gif') mimeType = 'image/gif';
+    else if (lowerExt === '.webp') mimeType = 'image/webp';
+    else if (lowerExt === '.mp4') mimeType = 'video/mp4';
+    else if (lowerExt === '.mp3') mimeType = 'audio/mpeg';
+    else if (lowerExt === '.wav') mimeType = 'audio/wav';
+
+    // 3. 上传到本地 MinIO 的 workflows 桶中
+    let uploadUrl = '';
+    try {
+      console.log(`[Engine Upload] 📦 正在同步上传到 MinIO: ${uniqueFilename}...`);
+      await axios.put(`http://localhost:19000/workflows/${uniqueFilename}`, buffer, {
+        headers: { 'Content-Type': mimeType },
+        timeout: 8000
+      });
+      uploadUrl = `http://localhost:19000/workflows/${uniqueFilename}`;
+      console.log(`[Engine Upload] 🎉 MinIO 上传成功: ${uploadUrl}`);
+    } catch (minioErr: any) {
+      console.warn(`[Engine Upload] ⚠️ MinIO 物理同步失败 (已自动启用降级防灾本地链路): ${minioErr.message}`);
+      // 灾备降级，使用本地核心服务端口 4000 接管
+      uploadUrl = `http://localhost:4000/outputs/${uniqueFilename}`;
+    }
+
+    return { success: true, url: uploadUrl, filename: uniqueFilename };
+  } catch (err: any) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: `Upload engine error: ${err.message}` });
+  }
 });
 
 // ============ 全局配置持久化与脱敏获取 ============
@@ -284,9 +350,6 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
       : messages;
 
     let cleanUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
-    if (providerId === 'minimax' && !cleanUrl.endsWith('/v1')) {
-      cleanUrl = `${cleanUrl}/v1`;
-    }
     const response = await axios.post(`${cleanUrl}/chat/completions`, {
       model: model,
       messages: finalMessages,
@@ -327,9 +390,6 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
     }
 
     let cleanUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
-    if (providerId === 'minimax' && !cleanUrl.endsWith('/v1')) {
-      cleanUrl = `${cleanUrl}/v1`;
-    }
 
     // ===== MiniMax 专属图片接口 (返回格式与 OpenAI 不同) =====
     if (providerId === 'minimax') {

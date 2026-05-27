@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { DEFAULT_PROVIDER_TTS_MODELS } from './useTTSNodeLogic';
 
 export interface ConfigPanelProps {
   id: string;
   data: any;
   activeTab: 'standard' | 'aix';
   providerId: string;
+  activeProviders?: Array<{ id: string; label: string }>;
+  settings?: any;
   currentRefAudio: string;
   isRefAudioConnected: boolean;
   currentText: string;
@@ -31,6 +34,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
   data,
   activeTab,
   providerId,
+  activeProviders = [],
+  settings = null,
   currentRefAudio,
   isRefAudioConnected,
   currentText,
@@ -102,6 +107,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
     <div
       ref={containerRef}
       className="nodrag"
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         top: '200px', // 对齐上游 bottom 定位调优，使面板自然向顶/底延伸
@@ -416,10 +423,10 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
               <button
                 className={`pill-capsule-button ${activePopover === 'voice' ? 'active' : ''}`}
                 onClick={() => setActivePopover(activePopover === 'voice' ? null : 'voice')}
-                disabled={audioMode !== 'clone'}
-                style={{ opacity: audioMode === 'clone' ? 1 : 0.5 }}
+                disabled={audioMode === 'music'} // 只有 AI 音乐模式下不需要配置音色，语音克隆与文本转语音均能配置音色 ID
+                style={{ opacity: audioMode === 'music' ? 0.5 : 1 }}
               >
-                🎙️ 音色/参数: {currentRefAudio ? '已就绪' : '未配置'} ▼
+                🎙️ 音色/参数: {currentRefAudio || data.inputs?.referenceId ? '已就绪' : '未配置'} ▼
               </button>
             )}
           </>
@@ -437,7 +444,12 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
       {/* Popover 1: 模型选择 (带二级联动) */}
       {activePopover === 'model' && (
-        <div className="popover-floating-card" style={{ width: '220px', left: '15%' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '220px', left: '15%' }}
+        >
           {activeTab === 'aix' ? (
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '6px' }}>
               💡 云端工作流已由模版配置托管，无需在节点端设置物理大模型。
@@ -448,52 +460,64 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                 🎙️ 配音大模型服务商
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-                {ttsVendors.map((v) => (
-                  <div
-                    key={v.id}
-                    className={`hover-vendor-item ${activeVendor === v.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveVendor(v.id as any);
-                      handleInputChange('providerId', v.id);
-                      handleInputChange('model', vendorModels[v.id][0]);
-                    }}
-                  >
-                    <span>{v.label}</span>
-                    <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+                {activeProviders.map((v) => {
+                  const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_TTS_MODELS[v.id] || [];
+                  const isBuiltIn = ['minimax', 'openai', 'volcengine', 'suno', 'deepseek', 'runninghub'].includes(v.id);
+                  const filtered = isBuiltIn 
+                    ? providerModels.filter((m: string) => ['tts', 'speech', 'voice', 'clone', 'fish', 'sound', 'talk', 'suno', 'music', 'audio'].some(kw => m.toLowerCase().includes(kw)))
+                    : providerModels;
+                  const finalModels = filtered.length > 0 ? filtered : providerModels;
 
-                    {/* 二级联动下拉 */}
-                    <div className="sub-model-list-hover">
-                      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                        选择具体模型：
+                  return (
+                    <div
+                      key={v.id}
+                      className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
+                      onClick={() => {
+                        handleInputChange('providerId', v.id);
+                        handleInputChange('model', finalModels[0] || '');
+                      }}
+                    >
+                      <span>{v.label}</span>
+                      <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
+
+                      {/* 二级联动下拉 */}
+                      <div className="sub-model-list-hover">
+                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
+                          选择具体模型：
+                        </div>
+                        {finalModels.map((m: string) => (
+                          <button
+                            key={m}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleInputChange('providerId', v.id);
+                              handleInputChange('model', m);
+                              setActivePopover(null);
+                            }}
+                            style={{
+                              background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
+                              fontSize: '9.5px',
+                              padding: '4px 6px',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                        {finalModels.length === 0 && (
+                          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', padding: '8px', textAlign: 'center' }}>
+                            暂无可用模型
+                          </div>
+                        )}
                       </div>
-                      {vendorModels[v.id].map((m) => (
-                        <button
-                          key={m}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveVendor(v.id as any);
-                            handleInputChange('providerId', v.id);
-                            handleInputChange('model', m);
-                            setActivePopover(null);
-                          }}
-                          style={{
-                            background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            border: 'none',
-                            borderRadius: '4px',
-                            color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                            fontSize: '9.5px',
-                            padding: '4px 6px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            width: '100%'
-                          }}
-                        >
-                          {m}
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : audioMode === 'music' ? (
@@ -564,7 +588,12 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
       {/* Popover 2: 工作模式 */}
       {activePopover === 'mode' && (
-        <div className="popover-floating-card" style={{ width: '200px', left: '42%' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '200px', left: '42%' }}
+        >
           <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             ⚙️ 切换音频创作模式
           </div>
@@ -618,9 +647,14 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
         </div>
       )}
 
-      {/* Popover 3: 声音克隆参数 (仅 standard 且 clone 模式时) */}
-      {activePopover === 'voice' && audioMode === 'clone' && (
-        <div className="popover-floating-card" style={{ width: '280px', left: '50%' }}>
+      {/* Popover 3: 声音参数设置 (文本转语音与语音克隆共用配置) */}
+      {activePopover === 'voice' && audioMode !== 'music' && (
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '280px', left: '50%' }}
+        >
           <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             🧬 语音克隆参考源与配参
           </div>
@@ -682,6 +716,34 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
             {/* 参数表单 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {/* 仅当 direct 模式提供声音 ID / reference_id 输入框 */}
+              {mode === 'direct' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)' }}>声音 ID (reference_id):</span>
+                    <span style={{ fontSize: '7.5px', color: 'rgba(168, 85, 247, 0.85)' }}>鱼声 API 专享</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={data.inputs?.referenceId || ''}
+                    placeholder="输入 UUID (如 70cfa7460c804b37875f...)"
+                    className="nodrag"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onChange={(e) => handleInputChange('referenceId', e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '5px 8px',
+                      color: '#fff',
+                      fontSize: '10px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)' }}>克隆角色名称:</span>
                 <input
@@ -732,7 +794,12 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
       {/* Popover 4: aix RunningHub 工作流参数表单 */}
       {activePopover === 'workflow' && (
-        <div className="popover-floating-card" style={{ width: '280px', left: '15%', maxHeight: '280px', overflowY: 'auto' }}>
+        <div 
+          className="popover-floating-card nodrag" 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()} 
+          style={{ width: '280px', left: '15%', maxHeight: '280px', overflowY: 'auto' }}
+        >
           {data.inputs?.customTemplate ? (
             <>
               <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '4px' }}>

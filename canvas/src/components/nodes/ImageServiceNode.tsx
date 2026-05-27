@@ -28,7 +28,7 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
   ];
   const downstreamTypes = [
     { type: 'video-fusion', label: '📹 视频合成 Fusion' },
-    { type: 'grid-splitter', label: '⊞ 智能切片' },
+    { type: 'grid-splitter', label: '⊞ 宫格排版合成' },
     { type: 'loop-node', label: '🔄 循环迭代' }
   ];
 
@@ -76,7 +76,7 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
 
   return (
     <div 
-      className="relative text-left"
+      className="relative text-left image-service-node-container"
       style={{
         position: 'relative',
         width: '180px',
@@ -199,6 +199,8 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
           id={id}
           data={data}
           providerId={logic.providerId}
+          activeProviders={logic.activeProviders}
+          settings={logic.settings}
           size={logic.size}
           cfg={logic.cfg}
           steps={logic.steps}
@@ -233,23 +235,23 @@ export default function ImageServiceNode({ id, data, selected = false }: ImageSe
 
       {/* 嵌入高阶 CSS：控制 Handle 磁力自动吸附与高级过渡动画 */}
       <style>{`
-        .react-flow__handle {
+        .image-service-node-container .react-flow__handle {
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
-        .react-flow__handle:hover {
+        .image-service-node-container .react-flow__handle:hover {
           transform: translateY(-50%) scale(1.3) !important;
           background: rgba(168, 85, 247, 1) !important;
           border-color: #fff !important;
           box-shadow: 0 0 18px rgba(168, 85, 247, 0.95) !important;
         }
-        /* 物理大热区：让指针靠近 14px 时即可自动感应并吸附连线，体验流畅至极 */
-        .react-flow__handle::after {
+        /* 物理大热区：让指针靠近 4px 时即可自动感应并吸附连线，体验流畅至极 */
+        .image-service-node-container .react-flow__handle::after {
           content: '';
           position: absolute;
-          top: -14px;
-          left: -14px;
-          right: -14px;
-          bottom: -14px;
+          top: -4px;
+          left: -4px;
+          right: -4px;
+          bottom: -4px;
           border-radius: 50%;
           background: transparent;
           cursor: crosshair;

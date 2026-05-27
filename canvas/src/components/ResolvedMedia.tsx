@@ -166,6 +166,7 @@ export function ResolvedMedia({
         style={style}
         className={className}
         onClick={onClick}
+        loading="lazy"
       />
     );
   } else if (type === 'video') {

@@ -33,7 +33,7 @@ interface Settings {
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'comfy' | 'providers' | 'runninghub_api' | 'workflow' | 'cache' | 'templates';
+  initialTab?: 'comfy' | 'providers' | 'runninghub_api' | 'cache' | 'templates';
 }
 
 export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
@@ -45,7 +45,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'comfy' | 'providers' | 'runninghub_api' | 'workflow' | 'cache' | 'templates'>('comfy');
+  const [activeTab, setActiveTab] = useState<'comfy' | 'providers' | 'runninghub_api' | 'cache' | 'templates'>('comfy');
 
   useEffect(() => {
     if (isOpen && initialTab) {
@@ -81,6 +81,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const [customProviderApiKey, setCustomProviderApiKey] = useState('');
 
   // 状态追踪
+  const [cacheSubTab, setCacheSubTab] = useState<'image' | 'tts' | 'video' | 'chat'>('image');
   const [comfyTestStatus, setComfyTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string }>>({});
   const [providerTestStatus, setProviderTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string; modelCount?: number }>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -129,6 +130,47 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
 
   const allProviderNames = { ...providerNames, ...localCustomProviderNames };
 
+  // 动态聚合并去重所有启用厂商的模型列表
+  const allAvailableModels = React.useMemo(() => {
+    const list: Array<{ providerId: string; modelName: string; providerName: string; icon: string }> = [];
+    if (!settings || !settings.providers) return list;
+    Object.keys(settings.providers).forEach(pid => {
+      const p = settings.providers[pid];
+      if (p.enabled && Array.isArray(p.models)) {
+        p.models.forEach(m => {
+          if (!list.some(item => item.modelName === m)) {
+            list.push({
+              providerId: pid,
+              modelName: m,
+              providerName: allProviderNames[pid]?.name || pid,
+              icon: allProviderNames[pid]?.icon || '🔌'
+            });
+          }
+        });
+      }
+    });
+    return list;
+  }, [settings, localCustomProviderNames]);
+
+  // 按类别统计实际可用模型数量（不含默认预设模型）
+  const categoryModelCounts = React.useMemo(() => {
+    const counts = { chat: 0, image: 0, video: 0, tts: 0 };
+    allAvailableModels.forEach(item => {
+      const modelLower = item.modelName.toLowerCase();
+      // 复用后端 categorizeModels 的关键词匹配逻辑
+      if (/sora|kling|seedance|viduq|wan.*video|cogvideo|hunyuan.*video|minimax.*hailuo|hailuo|video/.test(modelLower)) {
+        counts.video++;
+      } else if (/gemini.*image|dall|flux|sd-|stable.*diffusion|wan.*image|midjourney|seedream|qwen.*image|imagen|image-/.test(modelLower)) {
+        counts.image++;
+      } else if (/tts|speech|voice|clone|fish|audio|sound|bark|openvoice/.test(modelLower)) {
+        counts.tts++;
+      } else {
+        counts.chat++;
+      }
+    });
+    return counts;
+  }, [allAvailableModels]);
+
   // 1. 获取配置数据
   useEffect(() => {
     if (isOpen) {
@@ -139,7 +181,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       // Check if dynamic setting hash is pointing to a specific tab
       const target = localStorage.getItem('settings_target_tab');
       if (target === 'workflow') {
-        setActiveTab('workflow');
+        setActiveTab('templates');
         localStorage.removeItem('settings_target_tab');
       }
     }
@@ -692,6 +734,30 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
     alert('🎉 自定义厂商服务商添加成功！已自动开启。请在配置卡中一键拨测连通。');
   };
 
+  // 6.5. 物理删除自定义厂商
+  const handleDeleteCustomProvider = (key: string) => {
+    if (!confirm(`确定彻底删除自定义 API 厂商 [${allProviderNames[key]?.name || key}] 吗？`)) return;
+    setSettings(prev => {
+      const updatedProviders = { ...prev.providers };
+      delete updatedProviders[key];
+      return {
+        ...prev,
+        providers: updatedProviders
+      };
+    });
+
+    const updatedLocal = { ...localCustomProviderNames };
+    delete updatedLocal[key];
+    setLocalCustomProviderNames(updatedLocal);
+    localStorage.setItem('custom_providers', JSON.stringify(updatedLocal));
+
+    const updatedStatus = { ...providerTestStatus };
+    delete updatedStatus[key];
+    setProviderTestStatus(updatedStatus);
+
+    alert('已移除，点击下方“保存”按钮即可写入磁盘存盘生效！');
+  };
+
   // 7. 工作流解析与管理 (RunningHub)
   const handleParseWorkflow = async () => {
     if (!newWorkflowAppId.trim()) {
@@ -972,26 +1038,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
             >
               <span>⚡</span> RunningHub 凭证拨测
             </button>
-            <button
-              onClick={() => setActiveTab('workflow')}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                fontSize: '13px',
-                textAlign: 'left',
-                width: '100%',
-                fontWeight: activeTab === 'workflow' ? 600 : 400,
-                background: activeTab === 'workflow' ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
-                color: activeTab === 'workflow' ? '#ffffff' : 'hsl(var(--text-secondary))',
-                borderLeft: activeTab === 'workflow' ? '3px solid hsl(var(--accent-primary))' : '3px solid transparent',
-                cursor: 'pointer'
-              }}
-            >
-              <span>🔮</span> AI应用 (RunningHub ID)
-            </button>
+
             <button
               onClick={() => setActiveTab('templates')}
               style={{
@@ -1297,400 +1344,200 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                   </div>
                 )}
 
-                {/* 3. 工作流管理 Tab (NEW PREMIUM TAB) */}
-                {activeTab === 'workflow' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* 4. 全局模型缓存展示 */}
+                {activeTab === 'cache' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div>
-                      <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>🔮 AI应用（工作流）解析与管理</h3>
+                      <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>智能模型分流缓存大仓 (Model Cache Portal)</h3>
                       <p style={{ fontSize: '12px', color: 'hsl(var(--text-muted))' }}>
-                        支持通过输入 RunningHub 平台的 App ID，智能拉取云端工作流的物理输入字段，支持别名修改与参数勾选，保存后可立即在加号菜单的“我的工作流”中调用！
+                        这里展示的是通过第三方 API 一键握手拨测后拉取的可用模型。您可以在下方将模型动态分配到不同的能力分类中，这些模型将被用于画布对应服务节点的快速选择。
                       </p>
                     </div>
 
-                    {/* ComfyUI 解析引导提示卡片 */}
-                    <div className="glass-card" style={{
-                      padding: '16px',
-                      background: 'rgba(14, 165, 233, 0.04)',
-                      border: '1px solid rgba(14, 165, 233, 0.25)',
-                      borderRadius: '10px',
+                    <div style={{
                       display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px'
+                      gap: '20px',
+                      background: 'rgba(0, 0, 0, 0.15)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      minHeight: '440px'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '18px' }}>💡</span>
-                        <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(56, 189, 248, 1)', margin: 0 }}>关于 ComfyUI 工作流配置</h4>
-                      </div>
-                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: '1.6' }}>
-                        由于本地 <b>ComfyUI</b> 实例集群采用本地运行架构，没有云端 App ID 抓取机制。如需配置与解析本地 ComfyUI 工作流，请直接点击下方按钮切换至<b>「自定义工作流 (JSON 解析)」</b>面板。在该面板中直接导入或粘贴本地导出的 <b>API 格式 JSON</b>，系统即可智能分析并提取所有可暴露的节点参数！
-                      </p>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <button
-                          onClick={() => setActiveTab('templates')}
-                          style={{
-                            background: 'rgba(14, 165, 233, 0.15)',
-                            border: '1px solid rgba(14, 165, 233, 0.4)',
-                            color: 'rgba(56, 189, 248, 1)',
-                            padding: '5px 14px',
-                            borderRadius: '6px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          🔌 前往「自定义工作流 (JSON 解析)」解析 ComfyUI JSON ➔
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 新增工作流表单 */}
-                    <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px' }}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px', color: 'rgba(168, 85, 247, 1)' }}>➕ 解析新工作流 (智能抓取 App ID)</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 80px', gap: '10px', marginBottom: '12px' }}>
-                        <div>
-                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>工作流显示名称 (Name):</span>
-                          <input 
-                            type="text" 
-                            value={newWorkflowName}
-                            onChange={(e) => setNewWorkflowName(e.target.value)}
-                            placeholder="例: 🎭 面部高清洗图"
-                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.5)', display: 'block', marginBottom: '4px' }}>RunningHub App ID:</span>
-                          <input 
-                            type="text" 
-                            value={newWorkflowAppId}
-                            onChange={(e) => setNewWorkflowAppId(e.target.value)}
-                            placeholder="输入 App ID 字符"
-                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.5)', display: 'block', marginBottom: '4px' }}>应用分类:</span>
-                          <select
-                            value={newWorkflowCapability}
-                            onChange={(e) => setNewWorkflowCapability(e.target.value as any)}
-                            style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 8px', color: '#fff', fontSize: '12px', outline: 'none', height: '30px' }}
-                          >
-                            <option value="image">🎨 图像应用</option>
-                            <option value="video">📹 视频应用</option>
-                            <option value="audio">🗣️ 音频应用</option>
-                          </select>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                          <button
-                            onClick={handleParseWorkflow}
-                            disabled={parsing}
-                            style={{
-                              width: '100%',
-                              background: 'rgba(168, 85, 247, 0.15)',
-                              border: '1px solid rgba(168, 85, 247, 0.4)',
-                              color: 'rgba(168, 85, 247, 1)',
-                              borderRadius: '6px',
-                              padding: '6px 0',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              height: '30px'
-                            }}
-                          >
-                            {parsing ? '解析中...' : '🔍 拉取'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={{ marginBottom: '12px' }}>
-                        <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>功能描述 (可选):</span>
-                        <input 
-                          type="text" 
-                          value={newWorkflowDesc}
-                          onChange={(e) => setNewWorkflowDesc(e.target.value)}
-                          placeholder="给这个工作流写一句简短的功能说明..."
-                          style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
-                        />
-                      </div>
-
-                      {/* 解析出的参数列表与别名配置 */}
-                      {parsedParams.length > 0 && (
-                        <div 
-                          style={{ 
-                            background: 'rgba(0,0,0,0.15)', 
-                            border: '1px solid rgba(255,255,255,0.04)', 
-                            borderRadius: '8px', 
-                            padding: '12px',
-                            marginBottom: '12px',
-                            animation: 'fadeIn 0.2s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>📋 参数全表筛选与别名配置</span>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button 
-                                onClick={() => handleSelectAllParams(true)}
-                                style={{ fontSize: '10px', color: 'rgba(168, 85, 247, 1)', cursor: 'pointer' }}
-                              >
-                                全选
-                              </button>
-                              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>|</span>
-                              <button 
-                                onClick={() => handleSelectAllParams(false)}
-                                style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
-                              >
-                                反选
-                              </button>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
-                            {parsedParams.map((p, idx) => (
-                              <div 
-                                key={idx} 
-                                style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  justifyContent: 'space-between', 
-                                  gap: '10px',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  padding: '6px 10px',
-                                  borderRadius: '4px'
-                                }}
-                              >
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1 }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={p.checked}
-                                    onChange={() => handleToggleParam(idx)}
-                                    style={{ accentColor: 'rgba(168, 85, 247, 1)' }}
-                                  />
-                                  <div style={{ textAlign: 'left' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#fff' }}>
-                                      {p.fieldName} <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>(Node ID: {p.nodeId})</span>
-                                    </div>
-                                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>{p.description || '无云端注释'}</div>
-                                  </div>
-                                </label>
-                                
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>中文别名:</span>
-                                  <input 
-                                    type="text" 
-                                    value={p.alias}
-                                    onChange={(e) => handleParamAliasChange(idx, e.target.value)}
-                                    placeholder="中文标签名"
-                                    style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '3px 6px', color: '#fff', fontSize: '11px', width: '120px', outline: 'none' }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                      {/* 左侧分类导航药丸栏 */}
+                      <div style={{
+                        width: '180px',
+                        borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+                        paddingRight: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}>
+                        {[
+                          { id: 'image', label: '生图 🎨', color: 'hsl(var(--accent-secondary))' },
+                          { id: 'tts', label: '音频 🎙️', color: '#38bdf8' },
+                          { id: 'video', label: '视频 📹', color: '#eab308' },
+                          { id: 'chat', label: '聊天/文本 🧠', color: 'hsl(var(--accent-primary))' }
+                        ].map(tab => {
+                          const count = categoryModelCounts[tab.id as keyof typeof categoryModelCounts] || 0;
+                          return (
                             <button
-                              onClick={handleSaveWorkflow}
+                              key={tab.id}
+                              onClick={() => setCacheSubTab(tab.id as any)}
                               style={{
-                                background: 'linear-gradient(135deg, hsl(262, 83%, 58%) 0%, hsl(316, 73%, 52%) 100%)',
-                                color: '#fff',
-                                padding: '6px 16px',
+                                width: '100%',
+                                padding: '10px 14px',
                                 borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: 600,
+                                textAlign: 'left',
+                                border: 'none',
                                 cursor: 'pointer',
-                                border: 'none'
-                              }}
-                            >
-                              💾 确认并保存工作流
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 已注册工作流展示列表 */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>📋 已注册/保存的 AI应用（工作流）列表 ({customWorkflows.length})</h4>
-                        {(() => {
-                          const deletedSaved = localStorage.getItem('deleted_default_workflows');
-                          const hasDeleted = deletedSaved && JSON.parse(deletedSaved).length > 0;
-                          if (!hasDeleted) return null;
-                          return (
-                            <button
-                              onClick={() => {
-                                RunningHubService.restoreDefaultWorkflows();
-                                window.dispatchEvent(new CustomEvent('runninghub_workflows_updated'));
-                                setCustomWorkflows(RunningHubService.getWorkflows());
-                                alert('🎉 系统内置 AI应用已成功恢复！');
-                              }}
-                              style={{
-                                padding: '2px 8px',
-                                background: 'rgba(56, 189, 248, 0.1)',
-                                border: '1px solid rgba(56, 189, 248, 0.3)',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                color: '#38bdf8',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              💡 恢复内置应用
-                            </button>
-                          );
-                        })()}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {customWorkflows.map((wf) => {
-                          const isDefault = wf.id.startsWith('rh_wf_face_consistency') || wf.id.startsWith('rh_wf_style_transfer') || wf.id === '2034899011521482754';
-                          return (
-                            <div 
-                              key={wf.id}
-                              className="glass-card" 
-                              style={{
-                                padding: '12px 16px',
+                                fontSize: '12px',
+                                fontWeight: cacheSubTab === tab.id ? 600 : 400,
+                                background: cacheSubTab === tab.id ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
+                                color: cacheSubTab === tab.id ? '#ffffff' : 'hsl(var(--text-secondary))',
+                                borderLeft: cacheSubTab === tab.id ? `3px solid ${tab.color}` : '3px solid transparent',
+                                transition: 'all 0.2s',
                                 display: 'flex',
-                                justifyContent: 'space-between',
                                 alignItems: 'center',
-                                background: 'rgba(255,255,255,0.01)',
-                                border: '1px solid rgba(255,255,255,0.04)',
-                                borderRadius: '8px'
+                                justifyContent: 'space-between'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (cacheSubTab !== tab.id) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (cacheSubTab !== tab.id) e.currentTarget.style.background = 'transparent';
                               }}
                             >
-                              <div style={{ textAlign: 'left' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{wf.name}</span>
-                                  {isDefault ? (
-                                    <span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', padding: '2px 6px', borderRadius: '4px' }}>系统内置</span>
-                                  ) : (
-                                    <span style={{ fontSize: '9px', background: 'rgba(168, 85, 247, 0.1)', color: 'rgba(168, 85, 247, 1)', padding: '2px 6px', borderRadius: '4px' }}>用户拉取</span>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>
-                                  App ID: <span style={{ fontFamily: 'monospace' }}>{wf.appId}</span> | 字段映射数量: {wf.nodeInfoList.length} 个
-                                </div>
-                              </div>
-
-                              <button
-                                onClick={() => handleDeleteWorkflow(wf.id)}
-                                style={{
-                                  padding: '4px 10px',
-                                  background: 'rgba(239, 68, 68, 0.08)',
-                                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  color: '#f87171',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                🗑️ 注销下线
-                              </button>
-                            </div>
+                              <span>{tab.label}</span>
+                              <span style={{
+                                fontSize: '10px',
+                                background: cacheSubTab === tab.id ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.08)',
+                                padding: '1px 6px',
+                                borderRadius: '10px',
+                                color: '#ffffff',
+                                fontWeight: 'bold'
+                              }}>
+                                {count}
+                              </span>
+                            </button>
                           );
                         })}
                       </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* 4. 全局模型缓存展示 */}
-                {activeTab === 'cache' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div>
-                      <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>物理模型分流缓存库 (Model Cache)</h3>
-                      <p style={{ fontSize: '12px', color: 'hsl(var(--text-muted))' }}>
-                        这里展示的是通过第三方 API 一键握手拨测后，智能分类存入全局的可用模型。它们将被用于工作流画布的智能生图、声音克隆等节点的模型快速选择。
-                      </p>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
-                      {/* LLM Chat 缓存 */}
-                      <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.1)' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'hsl(var(--accent-primary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>💬</span> 文本生成 (LLM Chat)
+                      {/* 右侧模型卡片流式点选 */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11.5px', color: 'hsl(var(--text-muted))' }}>
+                            当前检测到可用物理模型 <strong style={{ color: 'hsl(var(--accent-secondary))' }}>{allAvailableModels.length}</strong> 个。请在卡片右侧点选激活：
+                          </span>
                         </div>
+
                         <div style={{
-                          maxHeight: '340px',
+                          maxHeight: '390px',
                           overflowY: 'auto',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '10px',
+                          paddingRight: '6px'
                         }}>
-                          {(settings.model_cache.chat || []).map((m, i) => (
-                            <div key={i} style={{ fontSize: '11px', fontFamily: 'monospace', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px' }}>
-                              {m}
-                            </div>
-                          ))}
-                          {(!settings.model_cache.chat || settings.model_cache.chat.length === 0) && (
-                            <div style={{ fontSize: '11px', color: 'hsl(var(--text-muted))', textAlign: 'center', padding: '20px' }}>暂无可配模型</div>
-                          )}
-                        </div>
-                      </div>
+                          {allAvailableModels.map((item: any, index: number) => {
+                            const isActive = Array.isArray(settings.model_cache[cacheSubTab]) && 
+                              settings.model_cache[cacheSubTab].includes(item.modelName);
 
-                      {/* Image 缓存 */}
-                      <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.1)' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'hsl(var(--accent-secondary))', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>🎨</span> 图片绘制 (Flux/SD)
-                        </div>
-                        <div style={{
-                          maxHeight: '340px',
-                          overflowY: 'auto',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
-                        }}>
-                          {(settings.model_cache.image || []).map((m, i) => (
-                            <div key={i} style={{ fontSize: '11px', fontFamily: 'monospace', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px' }}>
-                              {m}
-                            </div>
-                          ))}
-                          {(!settings.model_cache.image || settings.model_cache.image.length === 0) && (
-                            <div style={{ fontSize: '11px', color: 'hsl(var(--text-muted))', textAlign: 'center', padding: '20px' }}>暂无可配模型</div>
-                          )}
-                        </div>
-                      </div>
+                            return (
+                              <div
+                                key={index}
+                                className="glass-card"
+                                style={{
+                                  padding: '12px 14px',
+                                  background: isActive ? 'rgba(139, 92, 246, 0.04)' : 'rgba(255, 255, 255, 0.01)',
+                                  border: isActive 
+                                    ? '1px solid rgba(139, 92, 246, 0.22)' 
+                                    : '1px solid rgba(255, 255, 255, 0.04)',
+                                  borderRadius: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  transition: 'all 0.2s',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                  const currentCache = { ...settings.model_cache };
+                                  const list = [...(currentCache[cacheSubTab] || [])];
+                                  if (isActive) {
+                                    const nextList = list.filter(m => m !== item.modelName);
+                                    currentCache[cacheSubTab] = nextList;
+                                  } else {
+                                    if (!list.includes(item.modelName)) {
+                                      list.push(item.modelName);
+                                    }
+                                    currentCache[cacheSubTab] = list;
+                                  }
+                                  setSettings({ ...settings, model_cache: currentCache });
+                                }}
+                              >
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '75%', pointerEvents: 'none' }}>
+                                  <div 
+                                    title={item.modelName}
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      color: isActive ? '#ffffff' : '#d4d4d8',
+                                      fontFamily: 'monospace',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    {item.modelName}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>{item.icon}</span>
+                                    <span>{item.providerName}</span>
+                                  </div>
+                                </div>
 
-                      {/* Video 缓存 */}
-                      <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.1)' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#eab308', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>📹</span> 视频合成 (Wan/LTX)
-                        </div>
-                        <div style={{
-                          maxHeight: '340px',
-                          overflowY: 'auto',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
-                        }}>
-                          {(settings.model_cache.video || []).map((m, i) => (
-                            <div key={i} style={{ fontSize: '11px', fontFamily: 'monospace', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px' }}>
-                              {m}
-                            </div>
-                          ))}
-                          {(!settings.model_cache.video || settings.model_cache.video.length === 0) && (
-                            <div style={{ fontSize: '11px', color: 'hsl(var(--text-muted))', textAlign: 'center', padding: '20px' }}>暂无可配模型</div>
-                          )}
-                        </div>
-                      </div>
+                                {/* Toggle 开关 */}
+                                <div 
+                                  style={{
+                                    width: '36px',
+                                    height: '20px',
+                                    borderRadius: '10px',
+                                    background: isActive ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.1)',
+                                    position: 'relative',
+                                    transition: 'background 0.2s ease-in-out',
+                                    pointerEvents: 'none'
+                                  }}
+                                >
+                                  <div style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    background: '#ffffff',
+                                    position: 'absolute',
+                                    top: '2px',
+                                    left: isActive ? '18px' : '2px',
+                                    transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+                                  }} />
+                                </div>
+                              </div>
+                            );
+                          })}
 
-                      {/* TTS 声音克隆缓存 */}
-                      <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.1)' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>🗣️</span> 声音克隆 (TTS/Fish)
-                        </div>
-                        <div style={{
-                          maxHeight: '340px',
-                          overflowY: 'auto',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
-                        }}>
-                          {(settings.model_cache.tts || []).map((m, i) => (
-                            <div key={i} style={{ fontSize: '11px', fontFamily: 'monospace', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px' }}>
-                              {m}
+                          {allAvailableModels.length === 0 && (
+                            <div style={{
+                              gridColumn: 'span 2',
+                              fontSize: '12px',
+                              color: 'hsl(var(--text-muted))',
+                              textAlign: 'center',
+                              padding: '60px 40px',
+                              background: 'rgba(255, 255, 255, 0.01)',
+                              borderRadius: '8px',
+                              border: '1px dashed rgba(255,255,255,0.06)',
+                              marginTop: '20px'
+                            }}>
+                              📢 暂无可用厂商拉取到模型。请先在「API 厂商」Tab 中开启厂商并完成一键密钥拨测！
                             </div>
-                          ))}
-                          {(!settings.model_cache.tts || settings.model_cache.tts.length === 0) && (
-                            <div style={{ fontSize: '11px', color: 'hsl(var(--text-muted))', textAlign: 'center', padding: '20px' }}>暂无可配模型</div>
                           )}
                         </div>
                       </div>
@@ -1746,6 +1593,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               value={customProviderId}
                               onChange={(e) => setCustomProviderId(e.target.value)}
                               placeholder="fishaudio"
+                              autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
                             />
                           </div>
@@ -1756,6 +1604,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               value={customProviderName}
                               onChange={(e) => setCustomProviderName(e.target.value)}
                               placeholder="Fish Audio (声音克隆)"
+                              autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
                             />
                           </div>
@@ -1766,6 +1615,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               value={customProviderIcon}
                               onChange={(e) => setCustomProviderIcon(e.target.value)}
                               placeholder="🗣️"
+                              autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none', textAlign: 'center' }}
                             />
                           </div>
@@ -1778,6 +1628,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               value={customProviderBaseUrl}
                               onChange={(e) => setCustomProviderBaseUrl(e.target.value)}
                               placeholder="https://api.fish.audio"
+                              autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
                             />
                           </div>
@@ -1788,6 +1639,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               value={customProviderApiKey}
                               onChange={(e) => setCustomProviderApiKey(e.target.value)}
                               placeholder="sk-..."
+                              autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
                             />
                           </div>
@@ -1838,19 +1690,40 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                 <span style={{ fontSize: '16px' }}>{info.icon}</span>
                                 <span style={{ fontSize: '13px', fontWeight: 600 }}>{info.name}</span>
                               </div>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                                <input 
-                                  type="checkbox" 
-                                  checked={config.enabled}
-                                  onChange={(e) => updateProviderConfig(key, { enabled: e.target.checked })}
-                                  style={{
-                                    accentColor: 'hsl(var(--accent-primary))',
-                                    width: '14px',
-                                    height: '14px'
-                                  }}
-                                />
-                                <span>开启厂商服务</span>
-                              </label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                {!providerNames[key] && (
+                                  <button
+                                    onClick={() => handleDeleteCustomProvider(key)}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.1)',
+                                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                                      color: '#ef4444',
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.35)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                                  >
+                                    🗑️ 删除厂商
+                                  </button>
+                                )}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={config.enabled}
+                                    onChange={(e) => updateProviderConfig(key, { enabled: e.target.checked })}
+                                    style={{
+                                      accentColor: 'hsl(var(--accent-primary))',
+                                      width: '14px',
+                                      height: '14px'
+                                    }}
+                                  />
+                                  <span>开启厂商服务</span>
+                                </label>
+                              </div>
                             </div>
 
                             {/* 第二行 */}

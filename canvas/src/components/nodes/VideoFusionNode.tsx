@@ -81,7 +81,7 @@ export default function VideoFusionNode({ id, data, selected }: VideoFusionNodeP
     { type: 'tts-service', label: '🗣️ 声音克隆 Agent' }
   ];
   const downstreamTypes = [
-    { type: 'grid-splitter', label: '⊞ 智能切片' }
+    { type: 'grid-splitter', label: '⊞ 宫格排版合成' }
   ];
 
   const progressPercent = data.progress !== undefined ? data.progress : (fusing ? 45 : 0);
