@@ -128,13 +128,17 @@ export function useModelSelector({
     return allIds
       .filter(pid => {
         if (pid === 'runninghub') return false;
+        const providerInSettings = settings.providers?.[pid];
+        // 自定义厂商：必须 enabled（存在于 settings 且 enabled=true）
+        if (providerInSettings && !providerInSettings.enabled) {
+          return false;
+        }
         // 内置厂商：检查能力是否匹配
         if (builtInIds.includes(pid)) {
           const p = BUILT_IN_PROVIDERS[pid];
           return p.capabilities.includes(capability);
         }
-        // 自定义厂商：需要 enabled
-        return settings.providers[pid]?.enabled;
+        return true;
       })
       .map(pid => {
         const builtIn = BUILT_IN_PROVIDERS[pid];
@@ -152,9 +156,14 @@ export function useModelSelector({
       });
   }, [settings, capability, customProviderNames]);
 
-  // 根据厂商 ID 获取过滤后的模型列表
+  // 根据厂商 ID 获取过滤后的模型列表（只返回 enabled provider 的模型）
   const getModelsForProvider = useCallback((providerId: string): string[] => {
     const keywords = MODEL_KEYWORDS[capability];
+
+    // provider 被禁用时返回空
+    if (settings?.providers?.[providerId] && !settings.providers[providerId].enabled) {
+      return [];
+    }
 
     // 如果有 model_cache，优先使用用户勾选的模型
     if (settings?.model_cache?.[capability]?.length > 0) {
@@ -198,10 +207,26 @@ export function useModelSelector({
     }
   }, [getModelsForProvider, currentModel, onProviderChange, onModelChange]);
 
-  // 切换模型
+  // 切换模型：如果模型不在当前 provider，自动切到有这个模型的 provider
   const setModel = useCallback((model: string) => {
+    const currentModels = getModelsForProvider(currentProviderId);
+    if (currentModels.includes(model)) {
+      onModelChange?.(model);
+      return;
+    }
+    // 模型不在当前 provider，搜索所有 enabled provider 找到它
+    if (settings?.providers) {
+      for (const [pid, p] of Object.entries(settings.providers)) {
+        if (p.enabled && getModelsForProvider(pid).includes(model)) {
+          onProviderChange?.(pid);
+          onModelChange?.(model);
+          return;
+        }
+      }
+    }
+    // 没找到匹配的 provider，只更新模型
     onModelChange?.(model);
-  }, [onModelChange]);
+  }, [getModelsForProvider, currentProviderId, settings, onModelChange, onProviderChange]);
 
   // 验证当前模型是否有效
   const validModel = useMemo(() => {
