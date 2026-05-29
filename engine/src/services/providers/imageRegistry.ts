@@ -33,7 +33,15 @@ export const imageProviderRegistry: Record<string, ImageProviderEntry> = {
   // ===== NewAPI / ZhangVIP =====
   // 提交走 NewAPI（计费），轮询走 APIMart GET /v1/tasks/{id}（免费）
   // 轮询需要有效的 APIMart key
+  // 可用模型：gpt-image-2, gpt-image-2-official
   'gpt-image-2': {
+    adapter: 'NewAPIAdapter',
+    mode: 'async',
+    endpoint: '/v1/images/generations',
+    authStyle: 'bearer',
+    note: '提交用 new-api，轮询用 apimart GET /v1/tasks/{id}',
+  },
+  'gpt-image-2-official': {
     adapter: 'NewAPIAdapter',
     mode: 'async',
     endpoint: '/v1/images/generations',
