@@ -16,6 +16,7 @@ export interface UsePromptSourceNodeLogicReturn {
   textVal: string;
   currentMode: string;
   connectedImage: string;
+  connectedImageRef: { url: string; nodeId: string } | null;
   localName: string;
   isEditingName: boolean;
   isEditing: boolean;
@@ -75,17 +76,16 @@ export function usePromptSourceNodeLogic({
   const textVal = data.inputs?.text || '';
   const currentMode = data.inputs?.mode || 'text';
 
-  // Connected upload image scanning
-  const connectedImage = useMemo(() => {
+  // Connected upload image scanning — 返回 URL 和来源节点 ID
+  const connectedImageRef = useMemo((): { url: string; nodeId: string } | null => {
     const connectedEdges = edges.filter(e => e.target === id && e.targetHandle === 'input');
-    const imgs: string[] = [];
-    connectedEdges.forEach(edge => {
+    for (const edge of connectedEdges) {
       const srcNode = nodes.find(n => n.id === edge.source);
-      if (!srcNode) return;
+      if (!srcNode) continue;
       const outputs = (srcNode.data?.outputs || {}) as any;
       const inputs = (srcNode.data?.inputs || {}) as any;
       const val = outputs.output || outputs.image || inputs.fileUrl || '';
-      if (!val || typeof val !== 'string') return;
+      if (!val || typeof val !== 'string') continue;
 
       const uploadFileType = inputs?.fileType || outputs?.fileType;
       const isVideoOrAudio =
@@ -96,7 +96,7 @@ export function usePromptSourceNodeLogic({
         srcNode.type === 'tts-service' ||
         (srcNode.type === 'upload-node' && (uploadFileType === 'audio' || uploadFileType === 'video'));
 
-      if (isVideoOrAudio) return;
+      if (isVideoOrAudio) continue;
 
       const isImage =
         val.startsWith('data:image/') ||
@@ -105,11 +105,14 @@ export function usePromptSourceNodeLogic({
         (srcNode.type === 'upload-node' && (uploadFileType === 'image' || !uploadFileType || val.startsWith('db://')));
 
       if (isImage) {
-        imgs.push(val);
+        return { url: val, nodeId: srcNode.id };
       }
-    });
-    return imgs[0] || '';
+    }
+    return null;
   }, [edges, nodes, id]);
+
+  // 兼容旧代码的便捷访问器
+  const connectedImage = connectedImageRef?.url || '';
 
   // 同步编辑状态
   const [isEditing, setIsEditing] = useState(false);
@@ -206,9 +209,24 @@ export function usePromptSourceNodeLogic({
     );
   }, [id, setNodes]);
 
+  // 将远程图片 URL 转为 data:image/...;base64, 格式
+  const fetchImageAsBase64 = async (url: string): Promise<string> => {
+    if (url.startsWith('data:')) return url;
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error(`图片加载失败: ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const handleGenerate = useCallback(async () => {
     const textVal2 = data.inputs?.text || '';
-    if (!textVal2.trim() && !connectedImage) {
+    const hasImage = !!connectedImageRef;
+    if (!textVal2.trim() && !hasImage) {
       alert('请输入剧本或小说原文描述，或者在左侧连线上传图像进行反推！');
       return;
     }
@@ -218,35 +236,85 @@ export function usePromptSourceNodeLogic({
       let resultText = '';
 
       try {
-        const systemPrompt = connectedImage
-          ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户关联的参考图以及剧本文本描述，反推出一段极高画质、充满电影感与视觉冲击力的 Midjourney/Stable Diffusion 英文与中文生图提示词。"
+        // 如果有图片连接，先把 URL 转成 base64 再发送多模态消息
+        let imageBase64: string | null = null;
+        if (hasImage && connectedImage) {
+          try {
+            imageBase64 = await fetchImageAsBase64(connectedImage);
+          } catch (e) {
+            console.warn('图片转 base64 失败，将用 URL 描述代替:', e);
+          }
+        }
+
+        // 有图片时自动找 vision 模型
+        let visionProviderId = activeVendor;
+        let visionModel = selectedModel;
+        if (imageBase64 && settings?.providers) {
+          const enabledProviders = Object.entries(settings.providers)
+            .filter(([pid, p]: [string, any]) => p.enabled && pid !== '01')
+            .map(([pid, p]: [string, any]) => ({ pid, models: p.models || [] }));
+
+          const vlModels = enabledProviders.flatMap(({ pid, models }) =>
+            models.filter((m: string) =>
+              (m.toLowerCase().startsWith('qwen') && m.toLowerCase().includes('vl')) ||
+              m.toLowerCase().includes('vision')
+            ).map((m: string) => ({ pid, model: m }))
+          );
+
+          if (vlModels.length > 0) {
+            visionProviderId = vlModels[0].pid;
+            visionModel = vlModels[0].model;
+            console.log(`[图像反推] 自动切换到 vision 模型: ${visionProviderId}/${visionModel}`);
+          }
+        }
+
+        const systemPrompt = hasImage
+          ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
           : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
 
-        const userPrompt = connectedImage
-          ? `关联参考图: ${connectedImage}\n剧本台词/场景描述: ${textVal2}`
-          : `原始剧本文本: ${textVal2}`;
+        // 构建消息内容：图片优先，然后是文本
+        let messageContent: string | Array<any>;
+        if (imageBase64) {
+          messageContent = [
+            { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
+          ];
+        } else {
+          messageContent = textVal2;
+        }
+
+        const body: any = {
+          providerId: visionProviderId,
+          model: visionModel,
+          messages: [
+            { role: 'user', content: messageContent }
+          ],
+          systemPrompt
+        };
+        if (imageBase64) {
+          body.messages[0].content = [
+            { type: 'image_url', image_url: { url: imageBase64 } },
+            { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
+          ];
+        }
 
         const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            providerId: activeVendor,
-            model: selectedModel,
-            messages: [{ role: 'user', content: userPrompt }],
-            systemPrompt
-          })
+          body: JSON.stringify(body)
         });
 
         const resData = await res.json();
         if (res.ok && resData.choices?.[0]?.message?.content) {
           resultText = resData.choices[0].message.content;
+        } else if (resData.error) {
+          throw new Error(resData.error);
         } else {
           throw new Error('接口返回空');
         }
       } catch (e) {
-        console.warn('调用真实大模型接口失败，切换至 Toonflow 内置本地 Agent 引擎进行离线反推/优化:', e);
-        if (connectedImage) {
-          resultText = `一只未来主义的机械猫，在霓虹漫天的赛博城市中展翅高飞，逆光的镜片反射出璀璨的代码雨，电影感，8K分辨率。\n\n${textVal2 || '反引力城堡，代码雨逆流升空'}`;
+        console.warn('调用大模型接口失败:', e);
+        if (hasImage) {
+          resultText = `一只未来主义的机械猫，在霓虹漫天的赛博城市中展翅高飞，逆光的镜片反射出璀璨的代码雨，电影感，8K分辨率。\n\n${textVal2 || ''}`;
         } else {
           resultText = `[AI 智能优化剧本] ${textVal2}\n\n优化模型: ${selectedModel}\n本场景具有极其强烈的科幻视觉冲击，建议搭配 Flux 闪电或 Wan-2.1 模型生成视频。`;
         }
@@ -279,8 +347,8 @@ export function usePromptSourceNodeLogic({
           detail: {
             nodeId: id,
             nodeName: data.label || '文本',
-            model: selectedModel,
-            errorMsg: connectedImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
+            model: hasImage ? `${visionProviderId}/${visionModel}` : selectedModel,
+            errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
           }
         })
       );
@@ -298,7 +366,7 @@ export function usePromptSourceNodeLogic({
     } finally {
       setGenerating(false);
     }
-  }, [data, connectedImage, textVal, activeVendor, selectedModel, id, setNodes]);
+  }, [data, connectedImageRef, connectedImage, textVal, activeVendor, selectedModel, id, setNodes, settings]);
 
   const handleSpawnImageService = useCallback(() => {
     if ((window as any).spawnLinkedNode) {
@@ -404,6 +472,7 @@ export function usePromptSourceNodeLogic({
     textVal,
     currentMode,
     connectedImage,
+    connectedImageRef,
     localName,
     isEditingName,
     isEditing,

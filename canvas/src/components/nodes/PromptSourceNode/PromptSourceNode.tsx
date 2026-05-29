@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Handle, Position, NodeResizer, useStore } from '@xyflow/react';
 import { ResolvedMedia } from '../../ResolvedMedia';
 import { WorkflowTextarea } from '../../WorkflowTextarea';
@@ -23,8 +23,9 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
   // 使用业务逻辑舱 Hook
   const logic = usePromptSourceNodeLogic({ id, data, selected });
 
-  // 模型选择状态
-  const [activeVendor, setActiveVendor] = useState<string>('openai');
+  // 模型选择状态：默认用 ali（确保有可用的 provider）
+  const [activeVendor, _setActiveVendor] = useState<string>('ali');
+  const setActiveVendor = useCallback((v: string) => _setActiveVendor(v), []);
   const [activePopover, setActivePopover] = useState<'model' | 'mode' | 'reference' | null>(null);
 
   // 使用统一模型选择器
@@ -49,6 +50,20 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [activePopover]);
+
+  // provider 切换时同步到 state
+  useEffect(() => {
+    if (logic.selectedModel && activeVendor) {
+      const modelList = getModelsForProvider(activeVendor, 'chat', logic.settings);
+      if (!modelList.includes(logic.selectedModel)) {
+        const found = chatProviders.find(p => {
+          const ml = getModelsForProvider(p.id, 'chat', logic.settings);
+          return ml.includes(logic.selectedModel);
+        });
+        if (found) _setActiveVendor(found.id);
+      }
+    }
+  }, [logic.selectedModel, chatProviders, logic.settings]);
 
   // 获取指定厂商的模型列表
   const getModelsForVendor = (vendorId: string) => {
