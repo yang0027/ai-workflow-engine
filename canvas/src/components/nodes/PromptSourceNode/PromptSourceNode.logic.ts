@@ -246,56 +246,26 @@ export function usePromptSourceNodeLogic({
           }
         }
 
-        // 有图片时自动找 vision 模型
-        let visionProviderId = activeVendor;
-        let visionModel = selectedModel;
-        if (imageBase64 && settings?.providers) {
-          const enabledProviders = Object.entries(settings.providers)
-            .filter(([pid, p]: [string, any]) => p.enabled && pid !== '01')
-            .map(([pid, p]: [string, any]) => ({ pid, models: p.models || [] }));
-
-          const vlModels = enabledProviders.flatMap(({ pid, models }) =>
-            models.filter((m: string) =>
-              (m.toLowerCase().startsWith('qwen') && m.toLowerCase().includes('vl')) ||
-              m.toLowerCase().includes('vision')
-            ).map((m: string) => ({ pid, model: m }))
-          );
-
-          if (vlModels.length > 0) {
-            visionProviderId = vlModels[0].pid;
-            visionModel = vlModels[0].model;
-            console.log(`[图像反推] 自动切换到 vision 模型: ${visionProviderId}/${visionModel}`);
-          }
-        }
-
         const systemPrompt = hasImage
           ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
           : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
 
-        // 构建消息内容：图片优先，然后是文本
-        let messageContent: string | Array<any>;
-        if (imageBase64) {
-          messageContent = [
-            { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
-          ];
-        } else {
-          messageContent = textVal2;
-        }
-
         const body: any = {
-          providerId: visionProviderId,
-          model: visionModel,
+          providerId: activeVendor,
+          model: selectedModel,
           messages: [
-            { role: 'user', content: messageContent }
+            {
+              role: 'user',
+              content: imageBase64
+                ? [
+                    { type: 'image_url', image_url: { url: imageBase64 } },
+                    { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
+                  ]
+                : textVal2
+            }
           ],
           systemPrompt
         };
-        if (imageBase64) {
-          body.messages[0].content = [
-            { type: 'image_url', image_url: { url: imageBase64 } },
-            { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
-          ];
-        }
 
         const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
           method: 'POST',
@@ -347,7 +317,7 @@ export function usePromptSourceNodeLogic({
           detail: {
             nodeId: id,
             nodeName: data.label || '文本',
-            model: hasImage ? `${visionProviderId}/${visionModel}` : selectedModel,
+            model: selectedModel,
             errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
           }
         })
@@ -366,7 +336,7 @@ export function usePromptSourceNodeLogic({
     } finally {
       setGenerating(false);
     }
-  }, [data, connectedImageRef, connectedImage, textVal, activeVendor, selectedModel, id, setNodes, settings]);
+  }, [data, connectedImageRef, connectedImage, textVal, activeVendor, selectedModel, id, setNodes]);
 
   const handleSpawnImageService = useCallback(() => {
     if ((window as any).spawnLinkedNode) {
