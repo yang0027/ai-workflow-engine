@@ -33,7 +33,7 @@ const DEFAULT_MODELS: Record<ModelCapability, Record<string, string[]>> = {
     minimax: ['MiniMax-M2.1'],
     deepseek: ['deepseek-chat', 'deepseek-coder'],
     openai: ['gpt-4o', 'gpt-4o-mini'],
-    ali: ['qwen-plus', 'qwen-turbo'],
+    ali: ['qwen-plus', 'qwen-turbo', 'qwen-vl-max', 'qwen-vl-plus'],
     volcengine: ['doubao-pro', 'doubao-lite']
   },
   image: {
@@ -176,16 +176,20 @@ export function useModelSelector({
       }
     }
 
-    // 直接从 settings.providers 获取模型列表
+    // cache 为空时只返回 DEFAULT_MODELS（默认推荐模型），避免列表过长
+    const defaults = DEFAULT_MODELS[capability]?.[providerId] || [];
+    if (defaults.length > 0) return defaults;
+
+    // provider 不在 DEFAULT_MODELS 里，再从 settings 拉取
     if (!settings?.providers?.[providerId]) {
-      return DEFAULT_MODELS[capability]?.[providerId] || [];
+      return [];
     }
     const provider = settings.providers[providerId];
     if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
-      return DEFAULT_MODELS[capability]?.[providerId] || [];
+      return [];
     }
 
-    // 用前缀匹配过滤，只返回对应类型的模型（前缀更精确，避免 q/qwen 等通用字符误匹配）
+    // 用前缀匹配过滤，只返回对应类型的模型
     const filtered = provider.models.filter((m: string) =>
       keywords.some(kw => m.toLowerCase().startsWith(kw.toLowerCase()))
     );
