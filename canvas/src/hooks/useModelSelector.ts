@@ -33,7 +33,7 @@ const DEFAULT_MODELS: Record<ModelCapability, Record<string, string[]>> = {
     minimax: ['MiniMax-M2.1'],
     deepseek: ['deepseek-chat', 'deepseek-coder'],
     openai: ['gpt-4o', 'gpt-4o-mini'],
-    ali: ['qwen-max', 'qwen-plus'],
+    ali: ['qwen-plus', 'qwen-turbo'],
     volcengine: ['doubao-pro', 'doubao-lite']
   },
   image: {

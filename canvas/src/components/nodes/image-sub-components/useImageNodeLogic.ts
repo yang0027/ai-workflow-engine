@@ -133,7 +133,7 @@ export function useImageNodeLogic({
   const isFaceRefConnected = connectedImages.length > 0;
 
   // 3. 基础参数
-  const providerId = data.inputs?.providerId || 'minimax';
+  const providerId = data.inputs?.providerId || 'ali';
   const size = data.inputs?.size || '1024x1024';
   const cfg = data.inputs?.cfg !== undefined ? data.inputs.cfg : 7.0;
   const steps = data.inputs?.steps !== undefined ? data.inputs.steps : 20;

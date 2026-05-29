@@ -30,7 +30,7 @@ export function useTTSNodeLogic({
 
   // 1. 提取基础输入参数
   const mode = data.inputs?.mode || 'direct';
-  const providerId = data.inputs?.providerId || 'minimax';
+  const providerId = data.inputs?.providerId || 'ali';
   const characterName = data.inputs?.characterName || '剧本男主';
   const refAudio = data.inputs?.refAudio || '';
   const currentRefAudio = isRefAudioConnected ? connectedRefAudio : refAudio;

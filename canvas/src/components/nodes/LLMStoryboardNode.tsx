@@ -115,7 +115,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
     loadSettingsAndSkills();
   }, []);
 
-  const providerId = data.inputs?.providerId || 'minimax';
+  const providerId = data.inputs?.providerId || 'ali';
   const model = data.inputs?.model || '';
 
   // 使用统一的模型选择钩子
@@ -198,7 +198,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           providerId: providerId,
-          model: model,
+          model: model || 'MiniMax-M2.1',
           messages: [{ role: 'user', content: finalPrompt }],
           systemPrompt
         })
@@ -229,12 +229,13 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
         );
 
         // 分发全局日记成功记录事件
+        const displayModel = model || data.inputs?.model || 'MiniMax-M2.1';
         window.dispatchEvent(
           new CustomEvent('add-success-log', {
             detail: {
               nodeId: id,
               nodeName: (data as any).title || '剧本分镜专家',
-              model: model,
+              model: displayModel,
               errorMsg: `剧本分镜解析成功 ✅ 已生成分镜内容`
             }
           })
@@ -242,6 +243,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
       } else {
         const errorReason = resData.error || resData.message || '接口返回了无效的大模型数据';
         setParseResult(`解析失败：${errorReason}`);
+        const displayModel = model || data.inputs?.model || 'MiniMax-M2.1';
 
         // 分发全局日记失败记录事件
         window.dispatchEvent(
@@ -249,7 +251,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
             detail: {
               nodeId: id,
               nodeName: (data as any).title || '剧本分镜专家',
-              model: model,
+              model: displayModel,
               errorMsg: `分镜解析失败: ${errorReason}`
             }
           })
@@ -257,6 +259,17 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
       }
     } catch (e: any) {
       setParseResult(`解析出错：${e.message}`);
+      const displayModel = model || data.inputs?.model || 'MiniMax-M2.1';
+      window.dispatchEvent(
+        new CustomEvent('add-failure-log', {
+          detail: {
+            nodeId: id,
+            nodeName: (data as any).title || '剧本分镜专家',
+            model: displayModel,
+            errorMsg: `分镜解析出错: ${e.message}`
+          }
+        })
+      );
     } finally {
       setParsing(false);
     }
