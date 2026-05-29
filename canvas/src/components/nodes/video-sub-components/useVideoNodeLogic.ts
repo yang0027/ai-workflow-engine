@@ -107,11 +107,7 @@ export function useVideoNodeLogic({
       const val = outputs.output || outputs.text || outputs.prompt || inputs.text || '';
       if (!val || typeof val !== 'string') return;
 
-      const isResourceUrl = 
-        val.startsWith('data:') || val.startsWith('db://') || val.startsWith('http') ||
-        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.mp4') || val.endsWith('.png') || val.endsWith('.jpg');
-
-      if (!isResourceUrl && srcNode.type === 'prompt-source') {
+      if (!isResourceUrl) {
         prompts.push(val);
       }
     });

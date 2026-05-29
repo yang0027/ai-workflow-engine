@@ -88,8 +88,9 @@ async function pollTask(taskId: string, apimartKey: string): Promise<string> {
   }
 
   const url = `${APIMART_URL}/v1/tasks/${taskId}`;
-  const maxAttempts = 120;
-  const intervalMs = 5000;
+  // 图片约 3-5 分钟，视频约 5-15 分钟，统一给足 30 分钟（1800s / 6s ≈ 300 次）
+  const maxAttempts = 300;
+  const intervalMs = 6000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
