@@ -135,7 +135,24 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
     onModelChange: (newModel) => {
       setNodes((nodes: any[]) => nodes.map((n) => {
         if (n.id === id) {
-          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
+          const newProviderId = currentProviderModels.includes(newModel)
+            ? providerId
+            : (settings?.model_cache?.chat?.length > 0
+                ? Object.entries(settings.providers || {}).find(([pid, p]: [string, any]) =>
+                    p.enabled && settings.model_cache.chat.includes(newModel)
+                  )?.[0]
+                : null) || providerId;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...n.data.inputs,
+                model: newModel,
+                providerId: newProviderId !== providerId ? newProviderId : n.data.inputs?.providerId
+              }
+            }
+          };
         }
         return n;
       }));

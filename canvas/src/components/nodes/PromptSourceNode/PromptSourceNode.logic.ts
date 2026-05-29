@@ -259,6 +259,10 @@ export function usePromptSourceNodeLogic({
               ...n,
               data: {
                 ...n.data,
+                inputs: {
+                  ...((n.data as any)?.inputs || {}),
+                  text: resultText
+                },
                 outputs: {
                   text: resultText,
                   output: resultText
