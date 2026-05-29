@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
-import { WorkflowTemplateService } from '../../../services/workflow-template.service';
-
-export const DEFAULT_PROVIDER_VIDEO_MODELS: Record<string, string[]> = {
-  vidu: ['vidu-high-speed', 'vidu-premium'],
-  volcengine: ['seedance-v1', 'seedance-v2'],
-  minimax: ['minimax-video-v1', 'minimax-video-v2'],
-  ali: ['wanx-video-v1', 'wanx-video-v2']
-};
+import { useModelSelector } from '../../../hooks/useModelSelector';
+import { useWorkflowSelector } from '../../../hooks/useWorkflowSelector';
+import { mapParams } from '../../../hooks/useParamMapper';
 
 interface UseVideoNodeLogicProps {
   id: string;
@@ -183,44 +178,19 @@ export function useVideoNodeLogic({
     }
   }, [data.outputs?.video]);
 
-  // 获取 RunningHub 与本地 ComfyUI 模板工作流列表
-  const [workflows, setWorkflows] = useState<any[]>(() => 
-    RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'video')
-  );
-  useEffect(() => {
-    const loadMergedWorkflows = async () => {
-      try {
-        const rhWorkflows = RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'video');
-        const localTemplates = await WorkflowTemplateService.listTemplates();
-        const filteredTemplates = localTemplates.filter(t => !t.capability || t.capability === 'video');
-        
-        const merged: any[] = [...rhWorkflows];
-        filteredTemplates.forEach(t => {
-          if (!merged.some(w => w.id === t.id)) {
-            merged.push(t);
-          }
-        });
-        setWorkflows(merged);
-      } catch (err) {
-        console.error('Failed to load merged workflows for video node:', err);
-      }
-    };
-
-    loadMergedWorkflows();
-
-    const handleUpdate = () => {
-      loadMergedWorkflows();
-    };
-    window.addEventListener('runninghub_workflows_updated', handleUpdate);
-    return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
-  }, []);
+  // 获取 RunningHub 与本地 ComfyUI 模板工作流列表（统一钩子）
+  const wfSelector = useWorkflowSelector({
+    capability: 'video',
+    currentWorkflowId: data.inputs?.runningHubTemplateId,
+    onChange: (wf) => {
+      if (wf) handleInputChange('runningHubTemplateId', wf.id);
+    },
+  });
 
   const currentTemplate = useMemo(() => {
-    if (data.inputs?.customTemplate) {
-      return data.inputs.customTemplate;
-    }
-    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
-  }, [workflows, runningHubTemplateId, data.inputs?.customTemplate]);
+    if (data.inputs?.customTemplate) return data.inputs.customTemplate;
+    return wfSelector.currentWorkflow;
+  }, [wfSelector.currentWorkflow, data.inputs?.customTemplate]);
 
   const unifiedParams = useMemo(() => {
     if (!currentTemplate) return [];
@@ -268,63 +238,36 @@ export function useVideoNodeLogic({
     loadSettings();
   }, []);
 
-  // 动态聚合并过滤出所有已开启的内置及自定义 API 服务商
-  const activeProviders = useMemo(() => {
-    if (!settings || !settings.providers) {
-      return [
-        { id: 'vidu', label: 'Vidu (视频生成)' },
-        { id: 'volcengine', label: '火山引擎 (豆包)' },
-        { id: 'minimax', label: 'MiniMax (海螺视频)' },
-        { id: 'ali', label: '通义万相 (阿里)' }
-      ];
-    }
-    const builtInLabels: Record<string, string> = {
-      vidu: 'Vidu (视频生成)',
-      volcengine: '火山引擎 (豆包)',
-      minimax: 'MiniMax (海螺视频)',
-      ali: '通义万相 (阿里)',
-      deepseek: 'DeepSeek',
-      runninghub: 'RunningHub'
-    };
-    return Object.keys(settings.providers)
-      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // 视频节点不需要将 RunningHub 作为常规 API 服务商展示
-      .map(pid => ({
-        id: pid,
-        label: settings.providers[pid].name || builtInLabels[pid] || pid
+  // 使用统一的模型选择钩子
+  const { providers: activeProviders, models: currentProviderModels, currentModel: validModel, setProviderId: handleProviderChange, setModel: handleModelChange } = useModelSelector({
+    capability: 'video',
+    settings,
+    currentProviderId: providerId,
+    currentModel: data.inputs?.model || '',
+    onProviderChange: (newProviderId) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, providerId: newProviderId } } };
+        }
+        return n;
       }));
-  }, [settings]);
-
-  const currentProviderModels = useMemo(() => {
-    const defaultModels = DEFAULT_PROVIDER_VIDEO_MODELS[providerId] || [];
-    if (!settings || !settings.providers || !settings.providers[providerId]) {
-      return defaultModels;
+    },
+    onModelChange: (newModel) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
+        }
+        return n;
+      }));
     }
-    const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
-      return defaultModels;
-    }
-    
-    // 核心重构：与大仓中已勾选的视频模型进行求交集，实现真正的模型点选分类过滤
-    const cachedVideoModels = settings.model_cache?.video || [];
-    const filtered = provider.models.filter((m: string) => cachedVideoModels.includes(m));
-    if (filtered.length > 0) {
-      return filtered;
-    }
+  });
 
-    // 降级：如果交集为空，才使用默认的正则分类过滤
-    const videoKeywords = /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma|kling|hailuo/i;
-    const regexFiltered = provider.models.filter((m: string) => videoKeywords.test(m));
-    return regexFiltered.length > 0 ? regexFiltered : provider.models;
-  }, [settings, providerId]);
-
-  const model = data.inputs?.model || currentProviderModels[0] || 'vidu-high-speed';
+  const model = validModel || currentProviderModels[0] || 'vidu-high-speed';
 
   // 当服务商或可选模型列表变化时，自动校验并重置当前选中的模型
   useEffect(() => {
-    if (currentProviderModels.length > 0) {
-      if (!currentProviderModels.includes(model)) {
-        handleInputChange('model', currentProviderModels[0]);
-      }
+    if (currentProviderModels.length > 0 && model && !currentProviderModels.includes(model)) {
+      handleModelChange(currentProviderModels[0]);
     }
   }, [providerId, currentProviderModels, model]);
 
@@ -559,109 +502,14 @@ export function useVideoNodeLogic({
           return;
         }
 
-        const aixInputs: Record<string, any> = {};
-        let textParamIndex = 0;
-        let imageParamIndex = 0;
-        let videoParamIndex = 0;
-        let audioParamIndex = 0;
-
-        unifiedParams.forEach((p: any) => {
-          const fieldLower = p.fieldName.toLowerCase();
-          const displayLower = (p.description || '').toLowerCase();
-          const inputKey = p.portId;
-          const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
-
-          const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-          const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
-          const isVideo = p.type === 'video' || fieldLower === 'video' || fieldLower === 'refvideo' || fieldLower === 'ref_video' || displayLower.includes('视频');
-          const isAudio = p.type === 'audio' || fieldLower === 'audio' || fieldLower === 'refaudio' || fieldLower === 'ref_audio' || displayLower.includes('音频') || displayLower.includes('声音') || displayLower.includes('配音');
-
-          if (isText) {
-            if (textParamIndex === 0) {
-              aixInputs[inputKey] = finalPrompt;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            textParamIndex++;
-          } else if (isImage) {
-            if (imageParamIndex === 0) {
-              aixInputs[inputKey] = finalImage;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            imageParamIndex++;
-          } else if (isVideo) {
-            if (videoParamIndex === 0) {
-              aixInputs[inputKey] = finalVideo;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            videoParamIndex++;
-          } else if (isAudio) {
-            if (audioParamIndex === 0) {
-              aixInputs[inputKey] = finalAudio;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            audioParamIndex++;
-          } else if (fieldLower === 'width' || fieldLower === 'w') {
-            const wVal = data.inputs?.width || 1280;
-            aixInputs[inputKey] = isNum ? wVal : String(wVal);
-          } else if (fieldLower === 'height' || fieldLower === 'h') {
-            const hVal = data.inputs?.height || 720;
-            aixInputs[inputKey] = isNum ? hVal : String(hVal);
-          } else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
-            aixInputs[inputKey] = isNum ? 1 : '1';
-          } else {
-            aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-          }
-        });
-
-        textParamIndex = 0;
-        imageParamIndex = 0;
-        videoParamIndex = 0;
-        audioParamIndex = 0;
-
-        const dynamicMappings = unifiedParams.map((p: any) => {
-          const fieldLower = p.fieldName.toLowerCase();
-          const displayLower = (p.description || '').toLowerCase();
-          const inputKey = p.portId;
-          const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
-
-          const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-          const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
-          const isVideo = p.type === 'video' || fieldLower === 'video' || fieldLower === 'refvideo' || fieldLower === 'ref_video' || displayLower.includes('视频');
-          const isAudio = p.type === 'audio' || fieldLower === 'audio' || fieldLower === 'refaudio' || fieldLower === 'ref_audio' || displayLower.includes('音频') || displayLower.includes('声音') || displayLower.includes('配音');
-
-          let mappedVal = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-
-          if (isText) {
-            if (textParamIndex === 0) mappedVal = finalPrompt;
-            textParamIndex++;
-          } else if (isImage) {
-            if (imageParamIndex === 0) mappedVal = finalImage;
-            imageParamIndex++;
-          } else if (isVideo) {
-            if (videoParamIndex === 0) mappedVal = finalVideo;
-            videoParamIndex++;
-          } else if (isAudio) {
-            if (audioParamIndex === 0) mappedVal = finalAudio;
-            audioParamIndex++;
-          } else if (fieldLower === 'width' || fieldLower === 'w') {
-            mappedVal = data.inputs?.width || 1280;
-          } else if (fieldLower === 'height' || fieldLower === 'h') {
-            mappedVal = data.inputs?.height || 720;
-          } else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
-            mappedVal = 1;
-          }
-
-          return {
-            portId: inputKey,
-            nodeId: p.nodeId,
-            fieldName: p.fieldName,
-            displayName: p.description || p.fieldName,
-            value: mappedVal
-          };
+        const { aixInputs, dynamicMappings } = mapParams(unifiedParams, {
+          inputs: data.inputs || {},
+          defaultWidth: 1280,
+          defaultHeight: 720,
+          resolvedText: finalPrompt,
+          resolvedImages: [finalImage],
+          resolvedVideo: finalVideo,
+          resolvedAudio: finalAudio,
         });
 
         const wfSource = currentTemplate.source || 'runninghub';
@@ -928,7 +776,7 @@ export function useVideoNodeLogic({
     settings,
     activeTab,
     videoModeTab,
-    runningHubTemplateId,
+    runningHubTemplateId: wfSelector.currentWorkflow?.id || '',
     fusing,
     fusedVideo,
     isFullscreen,
@@ -943,7 +791,6 @@ export function useVideoNodeLogic({
     setActivePopover,
     activeVendor,
     setActiveVendor,
-    workflows,
     currentTemplate,
     unifiedParams,
     model,

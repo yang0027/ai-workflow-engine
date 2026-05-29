@@ -1,5 +1,5 @@
 import React from 'react';
-import { DEFAULT_PROVIDER_IMAGE_MODELS } from './useImageNodeLogic';
+import { MODEL_KEYWORDS, getModelsForProvider } from '../../../hooks/useModelSelector';
 import { ResolvedMedia } from '../../ResolvedMedia';
 
 // 性能特优且酷炫的 inline badge 解析器：文本 -> 富文本 HTML (绿色高亮带微缩图)
@@ -49,7 +49,7 @@ export interface ConfigPanelProps {
   id: string;
   data: any;
   providerId: string;
-  activeProviders?: Array<{ id: string; label: string }>;
+  activeProviders?: Array<{ id: string; name: string; icon?: string }>;
   settings?: any;
   size: string;
   cfg: number;
@@ -355,14 +355,27 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             padding: 6px;
-            display: none;
             flex-direction: column;
             gap: 4px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             z-index: 2010;
+            /* 默认隐藏但保留布局空间，使用 visibility + opacity 替代 display */
+            visibility: hidden;
+            opacity: 0;
+            /* 缓慢淡出，增加手感 */
+            transition: visibility 0.2s ease 0.1s, opacity 0.2s ease 0.1s;
           }
-          .hover-vendor-item:hover .sub-model-list-hover {
-            display: flex;
+          /* hover 时显示子菜单，无延迟 */
+          .hover-vendor-item:hover > .sub-model-list-hover {
+            visibility: visible;
+            opacity: 1;
+            transition: visibility 0s, opacity 0.1s ease 0s;
+          }
+          /* 子菜单内部 hover 时也保持显示 */
+          .sub-model-list-hover:hover {
+            visibility: visible;
+            opacity: 1;
+            transition: visibility 0s, opacity 0.1s ease 0s;
           }
           .grid-ratio-button {
             background: rgba(255,255,255,0.02);
@@ -620,7 +633,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
               className={`pill-capsule-button ${activePopover === 'model' ? 'active' : ''}`}
               onClick={() => setActivePopover(activePopover === 'model' ? null : 'model')}
             >
-              🌐 选择模型 ▼
+              🌐 {model} ▼
             </button>
           )}
 
@@ -661,12 +674,22 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {activeProviders.map(v => {
-                const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_IMAGE_MODELS[v.id] || [];
-                const isBuiltIn = ['minimax', 'ali', 'volcengine', 'openai', 'deepseek', 'runninghub'].includes(v.id);
-                const filtered = isBuiltIn 
-                  ? providerModels.filter((m: string) => ['image', 'wanx', 'seedream', 'dall-e', 'flux', 'sdxl', 'stable-diffusion', 'illustrate', 'paint', 'imagine', 'kling'].some(kw => m.toLowerCase().includes(kw)))
-                  : providerModels;
-                const finalModels = filtered.length > 0 ? filtered : providerModels;
+                // 使用统一的模型获取函数
+                const finalModels = getModelsForProvider(v.id, 'image', settings);
+
+                // 如果没有匹配的模型，显示禁用状态
+                if (finalModels.length === 0) {
+                  return (
+                    <div 
+                      key={v.id} 
+                      className="hover-vendor-item"
+                      style={{ opacity: 0.5, cursor: 'default' }}
+                    >
+                      <span>{v.name}</span>
+                      <span style={{ fontSize: '8px', opacity: 0.3 }}>—</span>
+                    </div>
+                  );
+                }
 
                 return (
                   <div 
@@ -677,7 +700,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                       handleInputChange('model', finalModels[0] || '');
                     }}
                   >
-                    <span>{v.label}</span>
+                    <span>{v.name}</span>
                     <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
 
                     {/* 二级级联 */}

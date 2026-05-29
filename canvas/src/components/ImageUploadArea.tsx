@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { UploadService } from '../services/upload.service';
 
 interface ImageUploadAreaProps {
   displayVal: string;
@@ -23,7 +24,7 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
       return;
     }
 
-    // db:// 协议 - 尝试从 IndexedDB 读取
+    // db:// 协议 - 历史向下兼容逻辑清洗（提示与清洗，不再提供 indexedDB 新注入）
     if (displayVal.startsWith('db://')) {
       const mediaId = displayVal.replace('db://', '');
       const dbName = 'ToonflowDB';
@@ -33,6 +34,10 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
       request.onsuccess = () => {
         try {
           const db = request.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            setPreviewUrl('');
+            return;
+          }
           const tx = db.transaction(storeName, 'readonly');
           const store = tx.objectStore(storeName);
           const getRequest = store.get(mediaId);
@@ -44,19 +49,12 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
               setPreviewUrl('');
             }
           };
-          getRequest.onerror = () => {
-            console.warn('[ImageUploadArea] IndexedDB read failed for:', mediaId);
-            setPreviewUrl('');
-          };
+          getRequest.onerror = () => setPreviewUrl('');
         } catch (e) {
-          console.warn('[ImageUploadArea] IndexedDB error:', e);
           setPreviewUrl('');
         }
       };
-      request.onerror = () => {
-        console.warn('[ImageUploadArea] IndexedDB open failed');
-        setPreviewUrl('');
-      };
+      request.onerror = () => setPreviewUrl('');
       return;
     }
 
@@ -81,17 +79,17 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
       reader.onload = async (evt) => {
         const b64 = evt.target?.result as string;
         if (b64) {
-          // 保存到 IndexedDB
-          const mediaId = `media-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-          await saveToIndexedDB(mediaId, b64);
-          // 同时上传到 ComfyUI 获取可用的文件名
+          // 1. 直接同步存入全局统一云端 MinIO 存储
+          const finalUrl = await UploadService.uploadBase64(b64, file.name, 'image');
+          
+          // 2. 同时尝试同步至 ComfyUI 底座的本地临时缓存桶以供工作流映射
           const comfyFilename = await uploadToComfyUI(file);
           if (comfyFilename) {
-            // 使用 ComfyUI 文件名（优先）
+            // 使用 ComfyUI 映射流（优先）
             onImageUploaded(comfyFilename);
           } else {
-            // 回退到 db:// 协议
-            onImageUploaded(`db://${mediaId}`);
+            // 回退并直接使用标准的统一 MinIO / 自愈 Blob 物理链路
+            onImageUploaded(finalUrl);
           }
         }
         setLoading(false);
@@ -105,35 +103,6 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
       console.error('[ImageUploadArea] Upload error:', err);
       setLoading(false);
     }
-  };
-
-  // 保存到 IndexedDB
-  const saveToIndexedDB = (id: string, data: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const dbName = 'ToonflowDB';
-      const request = indexedDB.open(dbName, 1);
-      
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains('mediaAssets')) {
-          db.createObjectStore('mediaAssets', { keyPath: 'id' });
-        }
-      };
-      
-      request.onsuccess = () => {
-        try {
-          const db = request.result;
-          const tx = db.transaction('mediaAssets', 'readwrite');
-          const store = tx.objectStore('mediaAssets');
-          store.put({ id, data });
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        } catch (e) {
-          reject(e);
-        }
-      };
-      request.onerror = () => reject(request.error);
-    });
   };
 
   // 上传到 ComfyUI
@@ -154,7 +123,7 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
         }
       }
     } catch (err) {
-      console.warn('[ImageUploadArea] ComfyUI upload failed, will use db:// fallback');
+      console.warn('[ImageUploadArea] ComfyUI upload failed, falling back to direct URL');
     }
     return null;
   };

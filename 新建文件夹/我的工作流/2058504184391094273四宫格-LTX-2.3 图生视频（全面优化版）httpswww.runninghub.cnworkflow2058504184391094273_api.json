@@ -1,0 +1,724 @@
+{
+  "14": {
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "Load Latent Upscale Model"
+    }
+  },
+  "15": {
+    "inputs": {
+      "frame_rate": [
+        "132",
+        0
+      ],
+      "positive": [
+        "71",
+        0
+      ],
+      "negative": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXVConditioning"
+    }
+  },
+  "30": {
+    "inputs": {
+      "sampler_name": "euler_ancestral_cfg_pp"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "32": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "198",
+        0
+      ],
+      "positive": [
+        "146",
+        0
+      ],
+      "negative": [
+        "146",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导"
+    }
+  },
+  "37": {
+    "inputs": {
+      "noise_seed": 120365996102397
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "53": {
+    "inputs": {
+      "clip_name1": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "双CLIP加载器"
+    }
+  },
+  "56": {
+    "inputs": {
+      "vae_name": "LTX23_video_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE加载器"
+    }
+  },
+  "60": {
+    "inputs": {
+      "vae_name": "LTX23_audio_vae_bf16.safetensors",
+      "device": "main_device",
+      "weight_dtype": "bf16"
+    },
+    "class_type": "VAELoaderKJ",
+    "_meta": {
+      "title": "VAELoader KJ"
+    }
+  },
+  "63": {
+    "inputs": {
+      "noise": [
+        "37",
+        0
+      ],
+      "guider": [
+        "32",
+        0
+      ],
+      "sampler": [
+        "30",
+        0
+      ],
+      "sigmas": [
+        "138",
+        0
+      ],
+      "latent_image": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器(高级)"
+    }
+  },
+  "64": {
+    "inputs": {
+      "av_latent": [
+        "63",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "65": {
+    "inputs": {
+      "samples": [
+        "64",
+        1
+      ],
+      "audio_vae": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+      "title": "LTXV Audio VAE Decode"
+    }
+  },
+  "71": {
+    "inputs": {
+      "text": [
+        "185",
+        0
+      ],
+      "clip": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "78": {
+    "inputs": {
+      "text": "singing, subtitles, blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, wrong hand count, artifacts around text, unreadable text on shirt or hat, incorrect lettering on cap (“PNTR”), missing microphone, misplaced microphone, inconsistent perspective, camera shake, incorrect depth of field, background too sharp, background clutter, distracting reflections, harsh shadows, inconsistent lighting direction, color banding, cartoonish rendering, 3D CGI look, unrealistic materials, uncanny valley effect, incorrect ethnicity, wrong gender, exaggerated expressions, smiling, laughing, exaggerated sadness, wrong gaze direction, eyes looking at camera, mismatched lip sync, silent or muted audio, distorted voice, robotic voice, echo, background noise, off-sync audio, missing sniff sounds, incorrect dialogue, added dialogue, repetitive speech, jittery movement, awkward pauses, incorrect timing, unnatural transitions, inconsistent framing, tilted camera, missing door or shelves, missing shallow depth of field, flat lighting, inconsistent tone, cinematic oversaturation, stylized filters, or AI artifacts.",
+      "clip": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "79": {
+    "inputs": {
+      "frame_rate": [
+        "132",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "LTX2-pre",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "no_preview": false,
+      "images": [
+        "93",
+        0
+      ],
+      "audio": [
+        "65",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "合并为视频"
+    }
+  },
+  "93": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 64,
+      "samples": [
+        "145",
+        2
+      ],
+      "vae": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE分块解码"
+    }
+  },
+  "98": {
+    "inputs": {
+      "width": [
+        "120",
+        1
+      ],
+      "height": [
+        "120",
+        2
+      ],
+      "length": [
+        "133",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+      "title": "EmptyLTXVLatentVideo"
+    }
+  },
+  "100": {
+    "inputs": {
+      "frames_number": [
+        "133",
+        0
+      ],
+      "frame_rate": [
+        "144",
+        0
+      ],
+      "batch_size": 1,
+      "audio_vae": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV Empty Latent Audio"
+    }
+  },
+  "107": {
+    "inputs": {
+      "images": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像"
+    }
+  },
+  "108": {
+    "inputs": {
+      "保存目录": "output",
+      "水平张数": 2,
+      "垂直张数": 2,
+      "移除画布边缘": true,
+      "移除描边": 0,
+      "文件名前缀": "孤海图像分割_",
+      "保存格式": "PNG",
+      "图像": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "GuHaiAutoImageSplit",
+    "_meta": {
+      "title": "孤海自动分割图像"
+    }
+  },
+  "110": {
+    "inputs": {
+      "start": 1,
+      "length": 1,
+      "image": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch+",
+    "_meta": {
+      "title": "获取图像批次"
+    }
+  },
+  "111": {
+    "inputs": {
+      "start": 2,
+      "length": 1,
+      "image": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch+",
+    "_meta": {
+      "title": "获取图像批次"
+    }
+  },
+  "112": {
+    "inputs": {
+      "start": 3,
+      "length": 1,
+      "image": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch+",
+    "_meta": {
+      "title": "获取图像批次"
+    }
+  },
+  "113": {
+    "inputs": {
+      "width": [
+        "150",
+        0
+      ],
+      "height": [
+        "150",
+        1
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu",
+      "image": [
+        "110",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "114": {
+    "inputs": {
+      "start": 0,
+      "length": 1,
+      "image": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch+",
+    "_meta": {
+      "title": "获取图像批次"
+    }
+  },
+  "115": {
+    "inputs": {
+      "width": [
+        "150",
+        0
+      ],
+      "height": [
+        "150",
+        1
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu",
+      "image": [
+        "111",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "116": {
+    "inputs": {
+      "width": [
+        "150",
+        0
+      ],
+      "height": [
+        "150",
+        1
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu",
+      "image": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "120": {
+    "inputs": {
+      "width": [
+        "150",
+        0
+      ],
+      "height": [
+        "150",
+        1
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu",
+      "image": [
+        "114",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "127": {
+    "inputs": {
+      "image": "958a199ca540dc07601f0e09faa779064aca5e842029ea519d1392cec85cdbee.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 24
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "fps"
+    }
+  },
+  "133": {
+    "inputs": {
+      "value": "a * b + 1",
+      "a": [
+        "136",
+        0
+      ],
+      "b": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "简易运算"
+    }
+  },
+  "136": {
+    "inputs": {
+      "value": 12
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "整数常量"
+    }
+  },
+  "138": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375,0.881203,0.863321,0.841251,0.820089,0.655, 0.381875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "ManualSigmas"
+    }
+  },
+  "144": {
+    "inputs": {
+      "_float": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "CR Float To Integer",
+    "_meta": {
+      "title": "浮点到整数"
+    }
+  },
+  "145": {
+    "inputs": {
+      "positive": [
+        "146",
+        0
+      ],
+      "negative": [
+        "146",
+        1
+      ],
+      "latent": [
+        "64",
+        0
+      ]
+    },
+    "class_type": "LTXVCropGuides",
+    "_meta": {
+      "title": "LTXVCropGuides"
+    }
+  },
+  "146": {
+    "inputs": {
+      "frame_idx_1": 0,
+      "strength_1": 0.7000000000000002,
+      "frame_idx_2": 96,
+      "strength_2": 0.7500000000000001,
+      "frame_idx_3": 192,
+      "strength_3": 0.9000000000000001,
+      "frame_idx_4": 287,
+      "strength_4": 0.8500000000000002,
+      "frame_idx_5": 0,
+      "strength_5": 1,
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "15",
+        1
+      ],
+      "vae": [
+        "56",
+        0
+      ],
+      "latent": [
+        "98",
+        0
+      ],
+      "image_1": [
+        "120",
+        0
+      ],
+      "image_2": [
+        "113",
+        0
+      ],
+      "image_3": [
+        "115",
+        0
+      ],
+      "image_4": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "LTXVAddGuideMulti",
+    "_meta": {
+      "title": "LTXV Add Guide Multi"
+    }
+  },
+  "147": {
+    "inputs": {
+      "video_latent": [
+        "146",
+        2
+      ],
+      "audio_latent": [
+        "100",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "150": {
+    "inputs": {
+      "use_custom_resolution": true,
+      "resolution": "832x480 (5.2:3) (横屏)",
+      "custom_width": 1024,
+      "custom_height": 600
+    },
+    "class_type": "TTResolutionSelector",
+    "_meta": {
+      "title": "TT分辨率选择器"
+    }
+  },
+  "151": {
+    "inputs": {
+      "unet_name": "ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNET加载器"
+    }
+  },
+  "185": {
+    "inputs": {
+      "text": "{\n  \"prompt\": \"4K 50fps 杜比视界 电影质感。全片采用顶级的写实主义风格，光影柔和且富有层次感，阳光透过老旧纸扎铺的窗户洒下，空气中漂浮着细微的尘埃。镜头语言极其克制，全片严格采用‘硬切’（Hard Cut）手法切换镜头，拒绝任何溶解、叠化或AI生成的过渡特效。色彩基调温润而略带怀旧，强调人物皮肤纹理与眼神中细腻的情感流动。背景配以极简的钢琴单音与老旧街道远处的喧嚣声，营造出一种宁静而略显忧伤的生命教育氛围。\",\n  \"scene_list\": [\n    {\n      \"scene_name\": \"纸扎铺的午后对话\",\n      \"scene_type\": \"内景\",\n      \"time_period\": \"午后，暖阳\",\n      \"env_attr\": \"老旧、堆满纸扎祭品、充满生活气息\",\n      \"space_attr\": \"狭窄、拥挤、充满故事感\",\n      \"light_attr\": \"侧逆光，窗户洒入的自然光，高动态范围\",\n      \"sound_attr\": \"安静、肃穆、伴随远处隐约的蝉鸣\",\n      \"ambient_sound\": \"老式挂钟的滴答声，远处街道的喇叭声\",\n      \"shot_list\": [\n        {\n          \"character\": \"小男孩\",\n          \"character_costume\": \"蓝白相间的校服外套，干净利落的短发\",\n          \"action_type\": \"抬头询问\",\n          \"motion_speed\": \"正常\",\n          \"emotion\": \"纯真、好奇\",\n          \"shot_scale\": \"近景\",\n          \"camera_angle\": \"平视\",\n          \"shot_move\": \"固定\",\n          \"shot_depth\": \"浅景深\",\n          \"shot_pace\": \"慢\",\n          \"shot_duration\": \"3s\",\n          \"content\": \"画面起势，镜头稳稳锁定在男孩稚嫩的脸上。他双手扶着玻璃柜台，身体微微前倾，眼神中透着孩童特有的纯粹与探索欲。背景中的纸扎人偶静默伫立。画面保持高度微动态：男孩的睫毛轻微颤动，空气中的尘埃在丁达尔效应下缓缓浮动，男孩胸腔随着呼吸起伏，随后他认真地开口说话，口型与台词精准同步。\",\n          \"vfx\": \"无\",\n          \"dialogue\": \"（认真且好奇）什么叫去世啊？\",\n          \"sound_effect\": \"衣物摩擦柜台的轻微声响\",\n          \"foley_sound\": \"呼吸声\"\n        },\n        {\n          \"character\": \"纸扎铺老板\",\n          \"character_costume\": \"墨绿色背心，戴着老花镜，皮肤黝黑且布满皱纹\",\n          \"action_type\": \"愣住\",\n          \"motion_speed\": \"正常\",\n          \"emotion\": \"震惊、无措、迟疑\",\n          \"shot_scale\": \"特写\",\n          \"camera_angle\": \"平视\",\n          \"shot_move\": \"固定\",\n          \"shot_depth\": \"浅景深\",\n          \"shot_pace\": \"快\",\n          \"shot_duration\": \"3s\",\n          \"content\": \"画面无缝直接硬切（Hard Cut）至老板的特写，没有任何过渡特效。老板原本严肃的表情瞬间凝固，瞳孔微缩，嘴巴半张，像是被突如其来的提问击中。微动态表现为：老板额头的汗珠在阳光下闪烁，镜框边缘有细微的光影跳动，他喉结上下滑动，展现出成年人面对童真时的局促与语塞。\",\n          \"vfx\": \"无\",\n          \"dialogue\": \"无\",\n          \"sound_effect\": \"无\",\n          \"foley_sound\": \"粗重的呼吸声\"\n        },\n        {\n          \"character\": \"小男孩\",\n          \"character_costume\": \"蓝白相间的校服外套\",\n          \"action_type\": \"自言自语\",\n          \"motion_speed\": \"正常\",\n          \"emotion\": \"思考、笃定\",\n          \"shot_scale\": \"近景\",\n          \"camera_angle\": \"平视\",\n          \"shot_move\": \"固定\",\n          \"shot_depth\": \"浅景深\",\n          \"shot_pace\": \"正常\",\n          \"shot_duration\": \"3s\",\n          \"content\": \"镜头干净利落地硬切回男孩的视角，拒绝任何转场。男孩微微仰头看向斜上方，仿佛在脑海中勾勒那个‘远方’。他神情专注，眼神中闪烁着自以为理解了真谛的光芒。微动态包括：发丝在微风中轻晃，男孩说话时嘴角带着天真的弧度，口型与台词完美契合，展现出极高的真实感。\",\n          \"vfx\": \"无\",\n          \"dialogue\": \"（若有所思）是不是去一个很远的地方，就叫去世。\",\n          \"sound_effect\": \"无\",\n          \"foley_sound\": \"布料轻微摩擦声\"\n        },\n        {\n          \"character\": \"纸扎铺老板\",\n          \"character_costume\": \"墨绿色背心，老花镜\",\n          \"action_type\": \"温柔回应\",\n          \"motion_speed\": \"正常\",\n          \"emotion\": \"心疼、释然、温柔\",\n          \"shot_scale\": \"中景\",\n          \"camera_angle\": \"俯拍\",\n          \"shot_move\": \"固定\",\n          \"shot_depth\": \"正常景深\",\n          \"shot_pace\": \"慢\",\n          \"shot_duration\": \"3s\",\n          \"content\": \"最后一次清脆的硬切，画面定格在老板靠着柜台俯身看向男孩的构图。老板紧绷的肩膀松弛下来，眼神从震惊转为深沉的心疼。他缓缓低头，避开男孩过于纯净的目光，轻声回应。微动态：老板的手指轻轻敲击柜台边缘，阳光在他背心上留下斑驳阴影，口型同步说出最后的温柔谎言。\",\n          \"vfx\": \"无\",\n          \"dialogue\": \"（语气放轻，带着叹息）也可以这么理解。\",\n          \"sound_effect\": \"远处传来一声清脆的鸟鸣\",\n          \"foley_sound\": \"低沉的嗓音回响\"\n        }\n      ]\n    }\n  ],\n  \"parameters\": {\n    \"resolution\": \"1920X1280\",\n    \"fps\": 25,\n    \"duration\": 12,\n    \"cfg_scale\": 8,\n    \"motion_bucket\": 120,\n    \"enhance_prompt\": true,\n    \"audio_generation\": true\n  }\n}",
+      "anything": [
+        "186",
+        0
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "展示任何"
+    }
+  },
+  "186": {
+    "inputs": {
+      "model": "gemini-3-flash-preview",
+      "role": "# Role\n你是一名好莱坞级别的电影分镜视频导演兼 LTX-2.3 / 通用视频模型 JSON 剧本架构师。你的核心任务是：接收用户提供的【四张四宫格参考图（帧1、帧2、帧3、帧4）的描述】以及【动作与台词要求】，将其转化为一个符合严格 JSON 格式的 **12秒多镜头电影剧本**。所有输出的提示词描述必须是**纯中文**。\n\n# Core Task & Cinematic Logic\n你必须将四张图片的故事序列转化为 JSON 数据结构中的 `shot_list`（镜头列表）。为了避免 AI 视频模型产生糟糕的画面融化、叠化或转场特效，你必须在每个镜头的 `content`（镜头内容描述）中严格遵守以下“四帧硬切”逻辑：\n\n1. **Shot 1 (对应图1起势):** \n描述开头精准锁定第一张图的构图与状态。必须强制加入“镜头内持续微动态”（如：发丝持续飘动、衣物随着动作起伏、胸腔随着呼吸起伏、背景光影流动），确保画面不僵化。\n2. **Shot 2 (对应图2硬切):** \n`content` 描述必须以强调**直接切换**起手（例如：“画面无缝直接硬切（Hard Cut）至第二幅构图，没有任何过渡、融化或叠化特效”）。保持持续的动作与微表情。如果该镜头有台词，必须强调角色开口说话，口型清晰且与台词完美同步。\n3. **Shot 3 (对应图3硬切):** \n`content` 描述同样必须强调硬切（例如：“镜头干净利落地硬切至第三幅画面，拒绝任何转场特效”）。继续推进人物动作与空间动态。\n4. **Shot 4 (对应图4收束):** \n`content` 描述强调最终落幅（例如：最后一次清脆的硬切，画面精准定格在第四幅画面的构图与神态）。如果有结尾台词，再次强调口型同步与情感爆发。\n\n# Output JSON Rules\n1. **纯 JSON 输出：** 只输出一个合法的 JSON 对象，不加任何 Markdown 标记（不要 ```json ），不要任何解释性文字。\n2. **语言要求：** JSON 内的所有值（除了参数字段名外）**必须全部使用中文**进行极其详尽、极具画面感的电影级描述。\n3. **时长逻辑：** 剧本总时长为 12 秒（`duration: 15`），请将这 12 秒合理分配给 `shot_list` 中的 4 个镜头（例如：2.5s, 2.5s, 3s, 4s），保证它们相加等于 12。\n4. **镜头数量：** `shot_list` 数组中**必须且只能包含 4 个对象**，依次对应图1到图4。\n\n# Input Format (用户将会提供以下内容)\n[Frame 1]: 图1描述\n[Frame 2]: 图2描述\n[Frame 3]: 图3描述\n[Frame 4]: 图4描述\n[Character & Costume]: 角色身份与服装打扮\n[Action & Plot]: 整体剧情动作\n[Dialogues]: 中文台词及分配的帧数\n[Audio & Mood]: 环境音、配乐与整体氛围\n\n# JSON Structure Template (必须严格遵循此结构输出)\n{\n  \"prompt\": 4K 50fps 杜比视界 电影质感...（根据用户输入生成包含整体画风、光影、氛围和配乐的中文总描述，需强调全片采用硬切手法，保持极高真实度与微动态）,\n  \"scene_list\":[\n    {\n      \"scene_name\": \"（场景名称）\",\n      \"scene_type\": \"（内景/外景）\",\n      \"time_period\": \"（时间与天气）\",\n      \"env_attr\": \"（环境关键词）\",\n      \"space_attr\": \"（空间感关键词）\",\n      \"light_attr\": \"（光影关键词）\",\n      \"sound_attr\": \"（声音氛围关键词）\",\n      \"ambient_sound\": \"（环境音效词组）\",\n      \"shot_list\":[\n        {\n          \"character\": \"（角色名）\",\n          \"character_costume\": \"（服装描述）\",\n          \"action_type\": \"（动作类型）\",\n          \"motion_speed\": \"（正常/慢/快）\",\n          \"emotion\": \"（情绪）\",\n          \"shot_scale\": \"（特写/近景/中景等）\",\n          \"camera_angle\": \"（平视/俯拍/仰拍等）\",\n          \"shot_move\": \"（固定/推/拉/摇/移）\",\n          \"shot_depth\": \"（浅景深/正常景深/深景深）\",\n          \"shot_pace\": \"（慢/正常/快）\",\n          \"shot_duration\": \"（如：3.5s）\",\n          \"content\": （极其详尽的画面描述！对于图1，强调起势与持续微动态；对于图2-4，开头必须写明画面无缝硬切至...，绝无过渡融化特效，并描述微动作、光影和口型同步情况）,\n          \"vfx\": （视觉特效，无则填“无”）,\n          \"dialogue\": （中文台词及说话语气，如：（冷笑）你今晚是我的了。 无则填“无”）,\n          \"sound_effect\": （特定动作音效）,\n          \"foley_sound\": （拟音，如脚步声、布料摩擦声）\n        }\n        // ...（此处必须补齐对应的第2、3、4个shot对象，严格对应图2、图3、图4）\n      ]\n    }\n  ],\n  \"parameters\": {\n    \"resolution\": \"1920X1280\",\n    \"fps\": 25,\n    \"duration\": 10,\n    \"cfg_scale\": 8,\n    \"motion_bucket\": 120,\n    \"enhance_prompt\": true,\n    \"audio_generation\": true\n  }\n}\n\n# Final Instruction\n接收到用户的输入后，直接输出包含4个镜头的完整 JSON 字符串。",
+      "prompt": [
+        "187",
+        0
+      ],
+      "temperature": 0.6,
+      "seed": 1983145423,
+      "max_tokens": 4096,
+      "top_p": 1,
+      "presence_penalty": 0,
+      "frequency_penalty": 0,
+      "reasoning_effort": "none",
+      "skip_error": false,
+      "image1": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "RH_LLMAPI_Pro_Node",
+    "_meta": {
+      "title": "Runninghub LLM API Pro Node"
+    }
+  },
+  "187": {
+    "inputs": {
+      "text": "镜头稳稳地贴在男孩的脸上，他没有丝毫对死亡的恐惧，只有孩子对陌生概念最纯粹的好奇，认真地抬起头，问老板 “什么叫去世啊”。镜头猛地切到老板的脸上，他瞬间就愣住了，嘴巴微微张开，却一个字都说不出来，之前的严肃、担忧全都散了，只剩下成年人面对孩子童真提问时的无措与迟疑。镜头再拉回男孩身上，他像是已经找到了自己能理解的答案，继续认真地说道：是不是去一个很远的地方，就叫去世。最终，镜头缓缓落在老板的身上，他整个人都软了下来，眼神里满是藏不住的心疼，放轻了语气，低声回应 “也可以这么理解”。"
+    },
+    "class_type": "Text",
+    "_meta": {
+      "title": "文本"
+    }
+  },
+  "189": {
+    "inputs": {
+      "anything": [
+        "186",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "清理GPU占用"
+    }
+  },
+  "190": {
+    "inputs": {
+      "anything": [
+        "93",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "清理GPU占用"
+    }
+  },
+  "198": {
+    "inputs": {
+      "pwd": ""
+    },
+    "class_type": "RHHiddenNodes",
+    "_meta": {
+      "title": "Group Nodes(Password)"
+    }
+  }
+}

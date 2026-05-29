@@ -1,13 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
-import { WorkflowTemplateService } from '../../../services/workflow-template.service';
-
-export const DEFAULT_PROVIDER_IMAGE_MODELS: Record<string, string[]> = {
-  minimax: ['image-01'],
-  ali: ['wanx2.1-t2i-turbo', 'wanx2.1-t2i-plus'],
-  volcengine: ['Doubao-Seedream-5.0-Lite', 'doubao-seedream-5-0-260128', 'doubao-seedream-4-5-251128'],
-  openai: ['dall-e-3', 'dall-e-2']
-};
+import { useModelSelector, MODEL_KEYWORDS } from '../../../hooks/useModelSelector';
+import { useWorkflowSelector } from '../../../hooks/useWorkflowSelector';
+import { mapParams } from '../../../hooks/useParamMapper';
 
 interface UseImageNodeLogicProps {
   id: string;
@@ -220,42 +215,18 @@ export function useImageNodeLogic({
     }
   }, [data.label]);
 
-  const [workflows, setWorkflows] = useState<any[]>(() => 
-    RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image')
-  );
-  useEffect(() => {
-    const loadMergedWorkflows = async () => {
-      try {
-        const rhWorkflows = RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'image');
-        const localTemplates = await WorkflowTemplateService.listTemplates();
-        const filteredTemplates = localTemplates.filter(t => !t.capability || t.capability === 'image');
-        
-        const merged: any[] = [...rhWorkflows];
-        filteredTemplates.forEach(t => {
-          if (!merged.some(w => w.id === t.id)) {
-            merged.push(t);
-          }
-        });
-        setWorkflows(merged);
-      } catch (err) {
-        console.error('Failed to load merged workflows for image node:', err);
-      }
-    };
+  const wfSelector = useWorkflowSelector({
+    capability: 'image',
+    currentWorkflowId: data.inputs?.runningHubTemplateId,
+    onChange: (wf) => {
+      if (wf) handleInputChange('runningHubTemplateId', wf.id);
+    },
+  });
 
-    loadMergedWorkflows();
-
-    const handleUpdate = () => {
-      loadMergedWorkflows();
-    };
-    window.addEventListener('runninghub_workflows_updated', handleUpdate);
-    return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
-  }, []);
   const currentTemplate = useMemo(() => {
-    if (data.inputs?.customTemplate) {
-      return data.inputs.customTemplate;
-    }
-    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
-  }, [workflows, runningHubTemplateId, data.inputs?.customTemplate]);
+    if (data.inputs?.customTemplate) return data.inputs.customTemplate;
+    return wfSelector.currentWorkflow;
+  }, [wfSelector.currentWorkflow, data.inputs?.customTemplate]);
   const unifiedParams = useMemo(() => {
     if (!currentTemplate) return [];
     if (currentTemplate.paramsSchema) {
@@ -305,65 +276,36 @@ export function useImageNodeLogic({
     loadSettings();
   }, []);
 
-  // 动态聚合并过滤出所有已启用的内置及自定义 API 厂商
-  const activeProviders = useMemo(() => {
-    if (!settings || !settings.providers) {
-      return [
-        { id: 'minimax', label: 'MiniMax (海螺)' },
-        { id: 'ali', label: '通义万相 (Ali)' },
-        { id: 'volcengine', label: '火山引擎 (豆包)' },
-        { id: 'openai', label: 'OpenAI (DallE)' }
-      ];
-    }
-    const builtInLabels: Record<string, string> = {
-      minimax: 'MiniMax (海螺)',
-      ali: '通义万相 (Ali)',
-      volcengine: '火山引擎 (豆包)',
-      openai: 'OpenAI (DallE)',
-      deepseek: 'DeepSeek (中转)',
-      runninghub: 'RunningHub'
-    };
-    return Object.keys(settings.providers)
-      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // 生图节点不需要将 RunningHub 作为常规 API 服务商展示
-      .map(pid => ({
-        id: pid,
-        label: settings.providers[pid].name || builtInLabels[pid] || pid
+  // 使用统一的模型选择钩子
+  const { providers: activeProviders, models: currentProviderModels, currentModel: validModel, setProviderId: handleProviderChange, setModel: handleModelChange } = useModelSelector({
+    capability: 'image',
+    settings,
+    currentProviderId: providerId,
+    currentModel: data.inputs?.model || '',
+    onProviderChange: (newProviderId) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, providerId: newProviderId } } };
+        }
+        return n;
       }));
-  }, [settings]);
-
-  const currentProviderModels = useMemo(() => {
-    const defaultModels = DEFAULT_PROVIDER_IMAGE_MODELS[providerId] || [];
-    if (!settings || !settings.providers || !settings.providers[providerId]) {
-      return defaultModels;
+    },
+    onModelChange: (newModel) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
+        }
+        return n;
+      }));
     }
-    const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
-      return defaultModels;
-    }
-    
-    // 核心重构：与大仓中已勾选的生图模型进行求交集，实现真正的模型点选分类过滤
-    const cachedImageModels = settings.model_cache?.image || [];
-    const filtered = provider.models.filter((m: string) => cachedImageModels.includes(m));
-    if (filtered.length > 0) {
-      return filtered;
-    }
+  });
 
-    // 降级：如果交集为空，才使用默认的正则分类过滤
-    const imageKeywords = ['image', 'wanx', 'seedream', 'dall-e', 'flux', 'sdxl', 'stable-diffusion', 'illustrate', 'paint', 'imagine', 'kling'];
-    const regexFiltered = provider.models.filter((m: string) => {
-      const lowerM = m.toLowerCase();
-      return imageKeywords.some(kw => lowerM.includes(kw));
-    });
-    return regexFiltered.length > 0 ? regexFiltered : provider.models;
-  }, [settings, providerId]);
+  const model = validModel || currentProviderModels[0] || 'image-01';
 
-  const model = data.inputs?.model || currentProviderModels[0] || 'image-01';
-
+  // 当服务商或可选模型列表变化时，自动校验并重置当前选中的模型
   useEffect(() => {
-    if (currentProviderModels.length > 0) {
-      if (!currentProviderModels.includes(model)) {
-        handleInputChange('model', currentProviderModels[0]);
-      }
+    if (currentProviderModels.length > 0 && model && !currentProviderModels.includes(model)) {
+      handleModelChange(currentProviderModels[0]);
     }
   }, [providerId, currentProviderModels, model]);
 
@@ -622,91 +564,14 @@ export function useImageNodeLogic({
             return;
           }
 
-          const aixInputs: Record<string, any> = {};
-          let textParamIndex = 0;
-          let imageParamIndex = 0;
-
-          unifiedParams.forEach((p: any) => {
-            const fieldLower = p.fieldName.toLowerCase();
-            const displayLower = (p.description || '').toLowerCase();
-            const inputKey = p.portId;
-            const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
-
-            const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-            const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
-
-            // 1. 智能适配文本输入 (多段文本顺次对齐，首段绑定主提示词输入框)
-            if (isText) {
-              if (textParamIndex === 0) {
-                aixInputs[inputKey] = processedPrompt;
-              } else {
-                aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-              }
-              textParamIndex++;
-            } 
-            // 2. 智能图片输入，支持连卡槽多图顺次映射
-            else if (isImage) {
-              const targetImage = resolvedRefImages[imageParamIndex] || resolvedFaceRef || '';
-              aixInputs[inputKey] = targetImage;
-              imageParamIndex++;
-            } 
-            // 3. 画面宽度
-            else if (fieldLower === 'width' || fieldLower === 'w') {
-              const wVal = parseInt(size.split('x')[0]) || 1024;
-              aixInputs[inputKey] = isNum ? wVal : String(wVal);
-            } 
-            // 4. 画面高度
-            else if (fieldLower === 'height' || fieldLower === 'h') {
-              const hVal = parseInt(size.split('x')[1]) || 1024;
-              aixInputs[inputKey] = isNum ? hVal : String(hVal);
-            } 
-            // 5. 画面尺寸限制为 1
-            else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
-              aixInputs[inputKey] = isNum ? 1 : '1';
-            } 
-            // 6. 其他微调或特殊参数，读取在 data.inputs 中自动持久化保存的值
-            else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-          });
-
-          textParamIndex = 0;
-          imageParamIndex = 0;
-
-          const dynamicMappings = unifiedParams.map((p: any) => {
-            const fieldLower = p.fieldName.toLowerCase();
-            const displayLower = (p.description || '').toLowerCase();
-            const inputKey = p.portId;
-            const isNum = p.fieldType === 'number' || typeof p.fieldValue === 'number';
-
-            const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-            const isImage = p.type === 'image' || fieldLower === 'image' || fieldLower === 'faceref' || fieldLower === 'img' || fieldLower === 'refimage' || fieldLower === 'ref_image' || displayLower.includes('图片') || displayLower.includes('图像');
-
-            let mappedVal = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-
-            if (isText) {
-              if (textParamIndex === 0) {
-                mappedVal = processedPrompt;
-              }
-              textParamIndex++;
-            } else if (isImage) {
-              mappedVal = resolvedRefImages[imageParamIndex] || resolvedFaceRef || '';
-              imageParamIndex++;
-            } else if (fieldLower === 'width' || fieldLower === 'w') {
-              mappedVal = parseInt(size.split('x')[0]) || 1024;
-            } else if (fieldLower === 'height' || fieldLower === 'h') {
-              mappedVal = parseInt(size.split('x')[1]) || 1024;
-            } else if (fieldLower === 'batch_size' || fieldLower === 'batchsize' || fieldLower === 'count' || fieldLower === 'number') {
-              mappedVal = 1;
-            }
-
-            return {
-              portId: inputKey,
-              nodeId: p.nodeId,
-              fieldName: p.fieldName,
-              displayName: p.description || p.fieldName,
-              value: mappedVal
-            };
+          const { aixInputs, dynamicMappings } = mapParams(unifiedParams, {
+            inputs: data.inputs || {},
+            size,
+            defaultCfg: 7.0,
+            defaultSteps: 20,
+            resolvedText: processedPrompt,
+            resolvedImages: resolvedRefImages,
+            resolvedFaceRef: resolvedFaceRef,
           });
 
           const wfSource = currentTemplate.source || 'runninghub';
@@ -904,7 +769,7 @@ export function useImageNodeLogic({
     mentionSearch,
     connectedImages,
     activeTab,
-    runningHubTemplateId,
+    runningHubTemplateId: wfSelector.currentWorkflow?.id || '',
     imageModels,
     generating,
     generatedImg,

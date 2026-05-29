@@ -1,14 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
-import { WorkflowTemplateService } from '../../../services/workflow-template.service';
-
-// 定义 TTS 默认服务商与模型列表
-export const DEFAULT_PROVIDER_TTS_MODELS: Record<string, string[]> = {
-  minimax: ['speech-01-turbo', 'speech-01'],
-  openai: ['tts-1', 'tts-1-hd'],
-  volcengine: ['volc-tts-premium', 'volc-tts-standard'],
-  suno: ['suno-v3', 'suno-v4']
-};
+import { useModelSelector } from '../../../hooks/useModelSelector';
+import { useWorkflowSelector } from '../../../hooks/useWorkflowSelector';
+import { mapParams } from '../../../hooks/useParamMapper';
 
 interface UseTTSNodeLogicProps {
   id: string;
@@ -60,43 +54,18 @@ export function useTTSNodeLogic({
     }
   }, [data.label]);
 
-  // 4. 获取 RunningHub 与本地 ComfyUI 模板列表
-  const [workflows, setWorkflows] = useState<any[]>(() => 
-    RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'audio')
-  );
-  useEffect(() => {
-    const loadMergedWorkflows = async () => {
-      try {
-        const rhWorkflows = RunningHubService.getWorkflows().filter(w => !w.capability || w.capability === 'audio');
-        const localTemplates = await WorkflowTemplateService.listTemplates();
-        const filteredTemplates = localTemplates.filter(t => !t.capability || t.capability === 'audio');
-        
-        const merged: any[] = [...rhWorkflows];
-        filteredTemplates.forEach(t => {
-          if (!merged.some(w => w.id === t.id)) {
-            merged.push(t);
-          }
-        });
-        setWorkflows(merged);
-      } catch (err) {
-        console.error('Failed to load merged workflows for audio node:', err);
-      }
-    };
+  const wfSelector = useWorkflowSelector({
+    capability: 'audio',
+    currentWorkflowId: data.inputs?.runningHubTemplateId,
+    onChange: (wf) => {
+      if (wf) handleInputChange('runningHubTemplateId', wf.id);
+    },
+  });
 
-    loadMergedWorkflows();
-
-    const handleUpdate = () => {
-      loadMergedWorkflows();
-    };
-    window.addEventListener('runninghub_workflows_updated', handleUpdate);
-    return () => window.removeEventListener('runninghub_workflows_updated', handleUpdate);
-  }, []);
   const currentTemplate = useMemo(() => {
-    if (data.inputs?.customTemplate) {
-      return data.inputs.customTemplate;
-    }
-    return workflows.find(w => w.id === runningHubTemplateId) || workflows[0];
-  }, [workflows, runningHubTemplateId, data.inputs?.customTemplate]);
+    if (data.inputs?.customTemplate) return data.inputs.customTemplate;
+    return wfSelector.currentWorkflow;
+  }, [wfSelector.currentWorkflow, data.inputs?.customTemplate]);
 
   const unifiedParams = useMemo(() => {
     if (!currentTemplate) return [];
@@ -174,67 +143,36 @@ export function useTTSNodeLogic({
     loadSettings();
   }, []);
 
-  // 动态聚合并过滤出所有已启用的内置及自定义 API 厂商
-  const activeProviders = useMemo(() => {
-    if (!settings || !settings.providers) {
-      return [
-        { id: 'minimax', label: 'MiniMax (海螺)' },
-        { id: 'openai', label: 'OpenAI (官方)' },
-        { id: 'volcengine', label: '火山引擎 (豆包)' },
-        { id: 'suno', label: 'Suno (AI 音乐)' }
-      ];
-    }
-    const builtInLabels: Record<string, string> = {
-      minimax: 'MiniMax (海螺)',
-      openai: 'OpenAI (官方)',
-      volcengine: '火山引擎 (豆包)',
-      suno: 'Suno (AI 音乐)',
-      deepseek: 'DeepSeek',
-      runninghub: 'RunningHub'
-    };
-    return Object.keys(settings.providers)
-      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // TTS 音频节点不需要将 RunningHub 作为常规 API 服务商展示
-      .map(pid => ({
-        id: pid,
-        label: settings.providers[pid].name || builtInLabels[pid] || pid
+  // 使用统一的模型选择钩子
+  const { providers: activeProviders, models: currentProviderModels, currentModel: validModel, setProviderId: handleProviderChange, setModel: handleModelChange } = useModelSelector({
+    capability: 'tts',
+    settings,
+    currentProviderId: providerId,
+    currentModel: data.inputs?.model || '',
+    onProviderChange: (newProviderId) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, providerId: newProviderId } } };
+        }
+        return n;
       }));
-  }, [settings]);
-
-  // 大语言音频服务商可选模型联动列表
-  const currentProviderModels = useMemo(() => {
-    const defaultModels = DEFAULT_PROVIDER_TTS_MODELS[providerId] || [];
-    if (!settings || !settings.providers || !settings.providers[providerId]) {
-      return defaultModels;
+    },
+    onModelChange: (newModel) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
+        }
+        return n;
+      }));
     }
-    const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
-      return defaultModels;
-    }
-    
-    // 核心重构：与大仓中已勾选的音频模型进行求交集，实现真正的模型点选分类过滤
-    const cachedTtsModels = settings.model_cache?.tts || [];
-    const filtered = provider.models.filter((m: string) => cachedTtsModels.includes(m));
-    if (filtered.length > 0) {
-      return filtered;
-    }
+  });
 
-    // 降级：如果交集为空，才使用默认的正则分类过滤
-    const ttsKeywords = ['tts', 'speech', 'voice', 'clone', 'fish', 'sound', 'talk', 'suno', 'music', 'audio'];
-    const regexFiltered = provider.models.filter((m: string) => {
-      const lowerM = m.toLowerCase();
-      return ttsKeywords.some(kw => lowerM.includes(kw));
-    });
-    return regexFiltered.length > 0 ? regexFiltered : provider.models;
-  }, [settings, providerId]);
+  const model = validModel || currentProviderModels[0] || 'fish-speech-1.4';
 
-  const model = data.inputs?.model || currentProviderModels[0] || 'fish-speech-1.4';
-
-  // 8. 自动校准当前选中的模型
+  // 当服务商或可选模型列表变化时，自动校验并重置当前选中的模型
   useEffect(() => {
-    if (currentProviderModels.length > 0) {
-      if (!currentProviderModels.includes(model)) {
-        handleInputChange('model', currentProviderModels[0]);
-      }
+    if (currentProviderModels.length > 0 && model && !currentProviderModels.includes(model)) {
+      handleModelChange(currentProviderModels[0]);
     }
   }, [providerId, currentProviderModels, model]);
 
@@ -401,61 +339,10 @@ export function useTTSNodeLogic({
           return;
         }
 
-        // 构建 aix 运行所需的 inputs 参数映射
-        const aixInputs: Record<string, any> = {};
-        let textParamIndex = 0;
-        let audioParamIndex = 0;
-
-        unifiedParams.forEach((p: any) => {
-          const fieldLower = p.fieldName.toLowerCase();
-          const displayLower = (p.description || '').toLowerCase();
-          const inputKey = p.portId;
-
-          const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-          const isAudio = p.type === 'audio' || fieldLower === 'audio' || fieldLower === 'refaudio' || fieldLower === 'ref_audio' || displayLower.includes('音频') || displayLower.includes('声音') || displayLower.includes('配音');
-
-          if (isText) {
-            if (textParamIndex === 0) {
-              aixInputs[inputKey] = finalText;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            textParamIndex++;
-          } else if (isAudio) {
-            if (audioParamIndex === 0) {
-              aixInputs[inputKey] = resolvedRefAudio;
-            } else {
-              aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-            }
-            audioParamIndex++;
-          } else {
-            aixInputs[inputKey] = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-          }
-        });
-
-        // Kahn 拓扑数据流 mappings
-        const dynamicMappings = unifiedParams.map((p: any) => {
-          const fieldLower = p.fieldName.toLowerCase();
-          const displayLower = (p.description || '').toLowerCase();
-          const inputKey = p.portId;
-
-          const isText = fieldLower === 'text' || fieldLower === 'prompt' || fieldLower === 'instruction' || fieldLower === 'description' || displayLower.includes('提示词') || displayLower.includes('文本') || displayLower.includes('指令');
-          const isAudio = p.type === 'audio' || fieldLower === 'audio' || fieldLower === 'refaudio' || fieldLower === 'ref_audio' || displayLower.includes('音频') || displayLower.includes('声音') || displayLower.includes('配音');
-
-          let val = data.inputs?.[inputKey] !== undefined ? data.inputs[inputKey] : p.fieldValue;
-          if (isText) {
-            val = finalText;
-          } else if (isAudio) {
-            val = resolvedRefAudio;
-          }
-
-          return {
-            portId: p.fieldName,
-            nodeId: p.nodeId,
-            fieldName: p.fieldName,
-            displayName: p.description || p.fieldName,
-            value: val
-          };
+        const { aixInputs, dynamicMappings } = mapParams(unifiedParams, {
+          inputs: data.inputs || {},
+          resolvedText: finalText,
+          resolvedAudio: resolvedRefAudio,
         });
 
         const wfSource = currentTemplate.source || 'runninghub';
@@ -657,7 +544,7 @@ export function useTTSNodeLogic({
     currentRefAudio,
     workflowIdOrJson,
     activeTab,
-    runningHubTemplateId,
+    runningHubTemplateId: wfSelector.currentWorkflow?.id || '',
     ttsModels,
     cloning,
     clonedAudio,

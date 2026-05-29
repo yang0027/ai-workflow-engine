@@ -1,0 +1,74 @@
+=== Matches for: download ===
+Line 599: const downloadFileDirectly = async (url: string, filename: string) => {
+Line 618: a.download = filename;
+Line 631: a.download = filename;
+Line 637: console.error('Direct download failed, falling back to new window:', error);
+Line 645: (window as any).downloadFileDirectly = downloadFileDirectly;
+Line 896: case 'download': {
+Line 902: link.download = `toonflow-media-${node.id}`;
+Line 4657: download={asset.name}
+Line 4894: download={`toonflow-${item.type}-${item.id}`}
+Line 5510: { id: 'download', label: '⬇️ 下载成果' },
+Line 5851: link.download = `toonflow-media-${Date.now()}`;
+=== Matches for: historyAssets ===
+Line 379: setHistoryAssets(prev => [
+Line 414: const [historyAssets, setHistoryAssets] = useState<Array<{ id: string; type: 'image' | 'video' | 'audio'; url: string; nodeName: string }>>(() => {
+Line 419: console.error("Failed to load historyAssets from localStorage:", e);
+Line 425: localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(historyAssets));
+Line 426: }, [historyAssets]);
+Line 1161: historyAssets.forEach(ha => {
+=== Matches for: zoom ===
+Line 212: const { screenToFlowPosition, zoomTo, setCenter } = useReactFlow();
+Line 213: const zoom = useStore((s) => s.transform[2]);
+Line 560: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 2338: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 2905: fitViewOptions={{ maxZoom: 0.95, minZoom: 0.8 }}
+Line 3032: onClick={() => zoomTo(Math.max(0.1, zoom - 0.1))}
+Line 3062: value={zoom || 1}
+Line 3063: onChange={(e) => zoomTo(parseFloat(e.target.value))}
+Line 3079: onClick={() => zoomTo(Math.min(2, zoom + 0.1))}
+Line 3105: {/* Zoom 百分比 */}
+Line 3107: onDoubleClick={() => zoomTo(1)}
+Line 3120: {Math.round((zoom || 1) * 100)}%
+Line 3618: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 3656: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 3738: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 3778: setCenter(safePos.x, safePos.y, { zoom: 0.95, duration: 600 });
+Line 4508: cursor: 'zoom-in',
+Line 4621: cursor: 'zoom-in',
+Line 4841: cursor: 'zoom-in',
+Line 5947: { keys: '鼠标滚轮 / 触控板双指', action: '对无限画布进行平滑无极缩放 (Zoom)' },
+=== Matches for: 放大 ===
+Line 3098: title="放大"
+=== Matches for: history ===
+Line 278: const [activeFloatingPopup, setActiveFloatingPopup] = useState<'add' | 'templates' | 'script' | 'scene' | 'assets' | 'history' | 'logs' | null>(null);
+Line 379: setHistoryAssets(prev => [
+Line 414: const [historyAssets, setHistoryAssets] = useState<Array<{ id: string; type: 'image' | 'video' | 'audio'; url: string; nodeName: string }>>(() => {
+Line 416: const saved = localStorage.getItem('toonflow_history_assets_v2');
+Line 419: console.error("Failed to load historyAssets from localStorage:", e);
+Line 425: localStorage.setItem('toonflow_history_assets_v2', JSON.stringify(historyAssets));
+Line 426: }, [historyAssets]);
+Line 443: const [historySubTab, setHistorySubTab] = useState<'image' | 'video' | 'audio'>('image');
+Line 1066: const getHistoryItems = () => {
+Line 1101: if (p.type === historySubTab) items.push(p);
+Line 1105: if (ua.type === historySubTab) {
+Line 1118: if (historySubTab === 'image' && nodeData?.outputs?.image) {
+Line 1127: if (historySubTab === 'audio' && nodeData?.outputs?.audio) {
+Line 1136: if (historySubTab === 'video' && nodeData?.outputs?.video) {
+Line 1148: if (type === historySubTab) {
+Line 1161: historyAssets.forEach(ha => {
+Line 1162: if (ha.type === historySubTab) {
+Line 3243: id: 'history',
+Line 3561: {activeFloatingPopup && ['templates', 'assets', 'history'].includes(activeFloatingPopup) && (() => {
+Line 3890: { id: 'history', label: '🕐 成果历史记录', desc: 'AI 成果轨迹' },
+Line 4000: {activeFloatingPopup === 'history' && '🕐 Toonflow 成果历史轨迹'}
+Line 4005: {activeFloatingPopup === 'history' && '追溯与复用您以往所生成的图像、视频以及音频历史记录成果。'}
+Line 4099: {activeFloatingPopup === 'history' &&
+Line 4107: onClick={() => setHistorySubTab(t.id as any)}
+Line 4112: background: historySubTab === t.id ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
+Line 4113: color: historySubTab === t.id ? '#ffffff' : 'rgba(255,255,255,0.4)',
+Line 4115: fontWeight: historySubTab === t.id ? 700 : 500,
+Line 4807: {/* 3. History Main Tab */}
+Line 4808: {activeFloatingPopup === 'history' && (
+Line 4810: {getHistoryItems().length === 0 ? (
+Line 4815: getHistoryItems().map((item) => (

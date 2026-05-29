@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
-import { DEFAULT_PROVIDER_TTS_MODELS } from './useTTSNodeLogic';
+import { getModelsForProvider } from '../../../hooks/useModelSelector';
 
 export interface ConfigPanelProps {
   id: string;
   data: any;
   activeTab: 'standard' | 'aix';
   providerId: string;
-  activeProviders?: Array<{ id: string; label: string }>;
+  activeProviders?: Array<{ id: string; name: string; icon?: string }>;
   settings?: any;
   currentRefAudio: string;
   isRefAudioConnected: boolean;
@@ -211,14 +211,25 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 8px;
           padding: 6px;
-          display: none;
           flex-direction: column;
           gap: 4px;
           box-shadow: 0 10px 25px rgba(0,0,0,0.4);
           z-index: 2010;
+          /* 默认隐藏但保留布局空间，使用 visibility + opacity 替代 display */
+          visibility: hidden;
+          opacity: 0;
+          /* 缓慢淡出，增加手感 */
+          transition: visibility 0.2s ease 0.1s, opacity 0.2s ease 0.1s;
         }
-        .hover-vendor-item:hover .sub-model-list-hover {
-          display: flex;
+        .hover-vendor-item:hover > .sub-model-list-hover {
+          visibility: visible;
+          opacity: 1;
+          transition: visibility 0s, opacity 0.1s ease 0s;
+        }
+        .sub-model-list-hover:hover {
+          visibility: visible;
+          opacity: 1;
+          transition: visibility 0s, opacity 0.1s ease 0s;
         }
       `}</style>
 
@@ -461,12 +472,22 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
                 {activeProviders.map((v) => {
-                  const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_TTS_MODELS[v.id] || [];
-                  const isBuiltIn = ['minimax', 'openai', 'volcengine', 'suno', 'deepseek', 'runninghub'].includes(v.id);
-                  const filtered = isBuiltIn 
-                    ? providerModels.filter((m: string) => ['tts', 'speech', 'voice', 'clone', 'fish', 'sound', 'talk', 'suno', 'music', 'audio'].some(kw => m.toLowerCase().includes(kw)))
-                    : providerModels;
-                  const finalModels = filtered.length > 0 ? filtered : providerModels;
+                  // 使用统一的模型获取函数
+                  const finalModels = getModelsForProvider(v.id, 'tts', settings);
+
+                  // 如果没有匹配的模型，显示禁用状态
+                  if (finalModels.length === 0) {
+                    return (
+                      <div 
+                        key={v.id} 
+                        className="hover-vendor-item"
+                        style={{ opacity: 0.5, cursor: 'default' }}
+                      >
+                        <span>{v.name}</span>
+                        <span style={{ fontSize: '8px', opacity: 0.3 }}>—</span>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
@@ -477,7 +498,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                         handleInputChange('model', finalModels[0] || '');
                       }}
                     >
-                      <span>{v.label}</span>
+                      <span>{v.name}</span>
                       <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
 
                       {/* 二级联动下拉 */}

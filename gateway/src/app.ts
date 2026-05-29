@@ -57,8 +57,14 @@ fastify.get('/api/v1/download/proxy', async (request, reply) => {
     const buffer = Buffer.from(arrayBuffer);
     
     const cleanFilename = filename || `toonflow-media-${Date.now()}`;
-    reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(cleanFilename)}"`);
-    reply.header('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const isImage = contentType.startsWith('image/');
+    // inline: 浏览器内联显示（img/src 用）；attachment: 触发文件下载
+    const disposition = isImage
+      ? `inline; filename="${encodeURIComponent(cleanFilename)}"`
+      : `attachment; filename="${encodeURIComponent(cleanFilename)}"`;
+    reply.header('Content-Disposition', disposition);
+    reply.header('Content-Type', contentType);
     reply.header('Access-Control-Allow-Origin', '*');
     
     reply.send(buffer);

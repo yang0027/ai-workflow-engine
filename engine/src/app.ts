@@ -163,20 +163,25 @@ fastify.post('/api/v1/engine/upload', async (request, reply) => {
     // 2. 识别 MIME 类型以便 MinIO 能正确返回 Content-Type
     let mimeType = 'image/png';
     const lowerExt = ext.toLowerCase();
+    
+    // 物理防黑屏：增加主流视频及音频格式的深度匹配（包含大小写）
     if (lowerExt === '.jpg' || lowerExt === '.jpeg') mimeType = 'image/jpeg';
     else if (lowerExt === '.gif') mimeType = 'image/gif';
     else if (lowerExt === '.webp') mimeType = 'image/webp';
-    else if (lowerExt === '.mp4') mimeType = 'video/mp4';
+    else if (lowerExt === '.mp4' || lowerExt === '.webm' || lowerExt === '.mov' || lowerExt === '.avi' || lowerExt === '.mkv') mimeType = 'video/mp4';
     else if (lowerExt === '.mp3') mimeType = 'audio/mpeg';
     else if (lowerExt === '.wav') mimeType = 'audio/wav';
+    else if (lowerExt === '.flac') mimeType = 'audio/flac';
+    else if (lowerExt === '.ogg') mimeType = 'audio/ogg';
 
     // 3. 上传到本地 MinIO 的 workflows 桶中
     let uploadUrl = '';
     try {
       console.log(`[Engine Upload] 📦 正在同步上传到 MinIO: ${uniqueFilename}...`);
+      // 超时时间由 8 秒大幅提升至 60 秒，确保大文件（如 25.5MB 视频）不超时断开
       await axios.put(`http://localhost:19000/workflows/${uniqueFilename}`, buffer, {
         headers: { 'Content-Type': mimeType },
-        timeout: 8000
+        timeout: 60000
       });
       uploadUrl = `http://localhost:19000/workflows/${uniqueFilename}`;
       console.log(`[Engine Upload] 🎉 MinIO 上传成功: ${uploadUrl}`);
@@ -372,12 +377,12 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
 // ============ 通用生图服务调度路由 ============
 fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
   try {
-    const { providerId, model, prompt, size = '1024x1024', response_format = 'b64_json' } = request.body as {
+    const { providerId, model, prompt, size = '1024x1024', response_format = 'url' } = request.body as {
       providerId: string;
       model: string;
       prompt: string;
       size?: string;
-      response_format?: string;
+      response_format?: 'url' | 'b64_json';
     };
 
     if (!providerId || !model || !prompt) {

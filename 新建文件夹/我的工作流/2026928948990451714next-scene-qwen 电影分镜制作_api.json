@@ -1,0 +1,661 @@
+{
+  "56": {
+    "inputs": {
+      "seed": 633033486864969,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "sa_solver",
+      "scheduler": "simple",
+      "denoise": 1,
+      "positive": [
+        "68",
+        0
+      ],
+      "negative": [
+        "61",
+        0
+      ],
+      "latent_image": [
+        "135",
+        4
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "61": {
+    "inputs": {
+      "prompt": "",
+      "image1": [
+        "91",
+        0
+      ],
+      "image2": [
+        "139",
+        0
+      ],
+      "image3": [
+        "140",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "68": {
+    "inputs": {
+      "prompt": [
+        "76",
+        0
+      ],
+      "image1": [
+        "91",
+        0
+      ],
+      "image2": [
+        "139",
+        0
+      ],
+      "image3": [
+        "140",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "69": {
+    "inputs": {
+      "samples": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "74": {
+    "inputs": {
+      "image": "5b4e70ad744831baf492fdaaec734a8f16dca5686b32e02cd3a0723f33c2203b.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "76": {
+    "inputs": {
+      "prompt": [
+        "102",
+        0
+      ],
+      "start_index": 0,
+      "max_rows": 1000
+    },
+    "class_type": "easy promptLine",
+    "_meta": {
+      "title": "提示词行"
+    }
+  },
+  "91": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "letterbox",
+      "method": "lanczos",
+      "round_to_multiple": "8",
+      "scale_to_side": "shortest",
+      "scale_to_length": [
+        "104",
+        0
+      ],
+      "background_color": "#000000",
+      "image": [
+        "74",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "按宽高比缩放_V2"
+    }
+  },
+  "95": {
+    "inputs": {
+      "api_baseurl": "",
+      "api_key": "",
+      "model": "",
+      "role": "【输入方式】：参考图 + 文本描述  \n【延展目标】：基于上一张图的画面风格、人物外形、光影氛围、镜头语言，生成下一张分镜图，使得剧情延续\n\n保持人物外观一致  \n色调光影与参考图统一  \n背景元素延续，不突变  \n构图具备电影感（景别 / 光影 / 空间层次）\n\n镜头类型（特写 / 中景 / 远景 / 俯拍 / 跟拍 / 环绕 / 侧移 / 拉远）  \n镜头运动节奏（慢推 / 快切 / 手持感）  \n\n人物发色、身形不变  \n服饰延续衔接，不跳变  \n动作表情是上一个镜头的自然推进  \n背景环境连续递进\n\n高清画面  \n电影级光影  \n真实材质  \n无噪点无畸变  \n可作为下一张分镜生成基础\n\n输出时以Next Scene:开头，后面马上接文字。每一段文字是连续的，没有特殊符号，没有多余的解释，每一段文字100字左右，直接输出内容",
+      "prompt": "这是一个古装美女仙侠电影，参考图片，帮我写8个接下来的分镜",
+      "temperature": 0.6,
+      "seed": 104958398
+    },
+    "class_type": "RH_LLMAPI_NODE",
+    "_meta": {
+      "title": "Runninghub LLM API Node"
+    }
+  },
+  "99": {
+    "inputs": {
+      "text": "Next Scene: 大远景 (Extreme Wide Shot, 24mm)。画面构图强调垂直空间：图一中的 江诚站在地面黄沙上，仰视上方。镜头顺着他的视线，看到图二中的 沈清雪被吊在城墙垛口边，一袭红衣在风中飘扬，白衣领有血迹。城墙与人的巨大高度差清晰可见。6500K overcast cool light, deep depth of field, volumetric fog, film grain, subsurface scattering, dust particles, cinematic photorealistic, 8K resolution。RELIGHTING ONLY: diffuse cool ambient light (#4A5568).",
+      "anything": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "展示任何"
+    }
+  },
+  "102": {
+    "inputs": {
+      "input_string": [
+        "103",
+        0
+      ],
+      "option": "去空行"
+    },
+    "class_type": "ProcessString",
+    "_meta": {
+      "title": "常规处理字符(meeeyo.com)"
+    }
+  },
+  "103": {
+    "inputs": {
+      "text": "Next Scene: 大远景 (Extreme Wide Shot, 24mm)。画面构图强调垂直空间：图一中的 江诚站在地面黄沙上，仰视上方。镜头顺着他的视线，看到图二中的 沈清雪被吊在城墙垛口边，一袭红衣在风中飘扬，白衣领有血迹。城墙与人的巨大高度差清晰可见。6500K overcast cool light, deep depth of field, volumetric fog, film grain, subsurface scattering, dust particles, cinematic photorealistic, 8K resolution。RELIGHTING ONLY: diffuse cool ambient light (#4A5568).\n\n\n\n\n"
+    },
+    "class_type": "JjkText",
+    "_meta": {
+      "title": "Text"
+    }
+  },
+  "104": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "105": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "69",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "106": {
+    "inputs": {
+      "unet_name": "Qwen-Image-Edit-2511-FP8-e5m2fn.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNET加载器"
+    }
+  },
+  "107": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIP加载器"
+    }
+  },
+  "109": {
+    "inputs": {
+      "lora_name": "Qwen-Image-Lightning-8steps-V2.0-r32.safetensors",
+      "strength_model": 1,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器(仅模型)"
+    }
+  },
+  "110": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE加载器"
+    }
+  },
+  "111": {
+    "inputs": {
+      "anything2": [
+        "107",
+        0
+      ],
+      "anything3": [
+        "110",
+        0
+      ],
+      "anything": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "Anything Everywhere3",
+    "_meta": {
+      "title": "全局输入3"
+    }
+  },
+  "132": {
+    "inputs": {
+      "text": [
+        "103",
+        0
+      ],
+      "output_name": "output_text"
+    },
+    "class_type": "ShellAgentPluginOutputText",
+    "_meta": {
+      "title": "Output Text (ShellAgent Plugin)"
+    }
+  },
+  "133": {
+    "inputs": {
+      "lora_name": "next-scene_lora-v2-3000.safetensors",
+      "strength_model": 0.8000000000000002,
+      "model": [
+        "106",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器(仅模型)"
+    }
+  },
+  "135": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "aspect_ratio": "16:9 landscape 1344x768",
+      "swap_dimensions": "Off",
+      "upscale_factor": 1,
+      "batch_size": 1
+    },
+    "class_type": "CR SDXL Aspect Ratio",
+    "_meta": {
+      "title": "SDXL宽高比v2"
+    }
+  },
+  "139": {
+    "inputs": {
+      "image": "310dab90cd778ed27efb219bed62d35ec8e443a9dc393dc1fc9e59943d0e1a82.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "140": {
+    "inputs": {
+      "image": "905c276dd5b4c25172e9ec21728f1f8ca2cd9d61a4924efbda7911988b734a0c.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "141": {
+    "inputs": {
+      "lora_name": "qwen-image-edit-2511-multiple-angles-loraX2.safetensors",
+      "strength_model": 0.9000000000000001,
+      "model": [
+        "133",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器(仅模型)"
+    }
+  },
+  "142": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "143": {
+    "inputs": {
+      "noise_seed": 141997693799028
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "144": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE加载器"
+    }
+  },
+  "145": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "148",
+        0
+      ],
+      "positive": [
+        "158",
+        0
+      ],
+      "negative": [
+        "157",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导"
+    }
+  },
+  "146": {
+    "inputs": {
+      "steps": 4,
+      "width": [
+        "163",
+        0
+      ],
+      "height": [
+        "163",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2Scheduler"
+    }
+  },
+  "147": {
+    "inputs": {
+      "clip_name": "qwen_3_8b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIP加载器"
+    }
+  },
+  "148": {
+    "inputs": {
+      "unet_name": "flux-2-klein-9b.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNET加载器"
+    }
+  },
+  "149": {
+    "inputs": {
+      "text": "高清放大成细节丰富的摄影作品，去除图片瑕疵，保持整个图片内容不变",
+      "clip": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "150": {
+    "inputs": {
+      "samples": [
+        "160",
+        0
+      ],
+      "vae": [
+        "144",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "151": {
+    "inputs": {
+      "conditioning": [
+        "149",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "152": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 4,
+      "resolution_steps": 1,
+      "image": [
+        "156",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "图像按像素缩放"
+    }
+  },
+  "153": {
+    "inputs": {
+      "images": [
+        "155",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像"
+    }
+  },
+  "154": {
+    "inputs": {
+      "method": "mkl",
+      "strength": 1,
+      "multithread": true,
+      "image_ref": [
+        "69",
+        0
+      ],
+      "image_target": [
+        "150",
+        0
+      ]
+    },
+    "class_type": "ColorMatch",
+    "_meta": {
+      "title": "图像调色"
+    }
+  },
+  "155": {
+    "inputs": {
+      "sharpen_radius": 1,
+      "sigma": 0.35,
+      "alpha": 0.35,
+      "image": [
+        "154",
+        0
+      ]
+    },
+    "class_type": "ImageSharpen",
+    "_meta": {
+      "title": "图像锐化"
+    }
+  },
+  "156": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "69",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "LayerUtility: Purge VRAM V2"
+    }
+  },
+  "157": {
+    "inputs": {
+      "conditioning": [
+        "151",
+        0
+      ],
+      "latent": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "158": {
+    "inputs": {
+      "conditioning": [
+        "149",
+        0
+      ],
+      "latent": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "159": {
+    "inputs": {
+      "width": [
+        "163",
+        0
+      ],
+      "height": [
+        "163",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "160": {
+    "inputs": {
+      "noise": [
+        "143",
+        0
+      ],
+      "guider": [
+        "145",
+        0
+      ],
+      "sampler": [
+        "142",
+        0
+      ],
+      "sigmas": [
+        "146",
+        0
+      ],
+      "latent_image": [
+        "159",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器(高级)"
+    }
+  },
+  "161": {
+    "inputs": {
+      "pixels": [
+        "152",
+        0
+      ],
+      "vae": [
+        "144",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "162": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "155",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "163": {
+    "inputs": {
+      "image": [
+        "152",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  }
+}

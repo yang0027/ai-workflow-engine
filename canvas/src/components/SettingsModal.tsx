@@ -9,12 +9,21 @@ import {
   WorkflowTemplateCapability, 
   WorkflowParamType 
 } from '../services/workflow-template.service';
+import { 
+  MODEL_CATEGORY_CONFIG, 
+  getModelCategory, 
+  countModelsByCategory, 
+  filterModelsByCategory,
+  type ModelCategory 
+} from './SettingsModal/modelCategories';
 
 interface ProviderConfig {
   enabled: boolean;
   baseUrl: string;
   apiKey: string;
   models: string[];
+  name?: string;
+  icon?: string;
 }
 
 interface ModelCache {
@@ -22,6 +31,8 @@ interface ModelCache {
   image: string[];
   video: string[];
   tts: string[];
+  search: string[];
+  other: string[];
 }
 
 interface Settings {
@@ -40,7 +51,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const [settings, setSettings] = useState<Settings>({
     comfyui_instances: ['127.0.0.1:8188'],
     providers: {},
-    model_cache: { chat: [], image: [], video: [], tts: [] }
+    model_cache: { chat: [], image: [], video: [], tts: [], search: [], other: [] }
   });
 
   const [loading, setLoading] = useState(false);
@@ -79,9 +90,17 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const [customProviderIcon, setCustomProviderIcon] = useState('🔌');
   const [customProviderBaseUrl, setCustomProviderBaseUrl] = useState('');
   const [customProviderApiKey, setCustomProviderApiKey] = useState('');
+  const [editingProvider, setEditingProvider] = useState<{
+    id: string;
+    name: string;
+    icon: string;
+    baseUrl: string;
+    apiKey: string;
+  } | null>(null);
 
   // 状态追踪
-  const [cacheSubTab, setCacheSubTab] = useState<'image' | 'tts' | 'video' | 'chat'>('image');
+  const [cacheSubTab, setCacheSubTab] = useState<'image' | 'tts' | 'video' | 'chat' | 'search' | 'other'>('image');
+  const [movingModel, setMovingModel] = useState<string | null>(null);
   const [comfyTestStatus, setComfyTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string }>>({});
   const [providerTestStatus, setProviderTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string; modelCount?: number }>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -152,24 +171,80 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
     return list;
   }, [settings, localCustomProviderNames]);
 
-  // 按类别统计实际可用模型数量（不含默认预设模型）
+  // ============================================================
+  // 模型推荐与最新标识配置
+  // ============================================================
+
+  // 各厂商官方推荐模型列表（按推荐优先级排序）
+  const MODEL_RECOMMENDATIONS: Record<string, string[]> = {
+    minimax: ['MiniMax-M2.7', 'MiniMax-M2.5', 'MiniMax-M2.1', 'image-01'],
+    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'chatgpt-4o-latest'],
+    deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+    volcengine: ['Doubao-Seedream-5.0-Lite', 'doubao-seedream-5-0-260128'],
+    ali: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'wanx2.1-t2i-plus'],
+    vidu: ['viduq3-pro', 'viduq3-standard', 'vidu-high-speed'],
+    runninghub: ['RunningHub-TTS-VoiceClone', 'RunningHub-Video-Fusion'],
+    fishaudio: ['s1', 's3']
+  };
+
+  // 匹配"最新"模型的关键词模式（更精确，避免误匹配）
+  const NEW_MODEL_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+    // 版本号类：-M2.7, -2.5, -3.0（在 - 后面）
+    { pattern: /-m?\d+([\.\d]+)?$/i, label: '版本号' },
+    // 高级后缀类：-pro, -turbo, -plus, -ultra, -max
+    { pattern: /-(pro|turbo|plus|ultra|max)$/i, label: '高级后缀' },
+    // 明确标记：-latest, -new
+    { pattern: /-(latest|new)$/i, label: '明确标记' },
+    // 日期版本类：如 -251215（6位日期）
+    { pattern: /-\d{6}$/, label: '日期版本' },
+    // v版本：-v1, -v2
+    { pattern: /-v\d+$/i, label: 'v版本' },
+    // 修订版：-r1, -r2
+    { pattern: /-r\d+$/i, label: '修订版' },
+  ];
+
+  // 判断是否为推荐模型（基于厂商推荐列表）
+  const isRecommendedModel = (modelName: string, providerId: string): boolean => {
+    const recommendations = MODEL_RECOMMENDATIONS[providerId];
+    if (recommendations) {
+      return recommendations.some(rec =>
+        modelName === rec ||
+        modelName.toLowerCase().startsWith(rec.toLowerCase())
+      );
+    }
+    return false;
+  };
+
+  // 判断是否为最新模型（基于关键词模式，更严格）
+  const isNewModel = (modelName: string): boolean => {
+    const lower = modelName.toLowerCase();
+    return NEW_MODEL_PATTERNS.some(({ pattern }) => pattern.test(lower));
+  };
+
+  // 按类别统计实际可用模型数量
   const categoryModelCounts = React.useMemo(() => {
-    const counts = { chat: 0, image: 0, video: 0, tts: 0 };
-    allAvailableModels.forEach(item => {
-      const modelLower = item.modelName.toLowerCase();
-      // 复用后端 categorizeModels 的关键词匹配逻辑
-      if (/sora|kling|seedance|viduq|wan.*video|cogvideo|hunyuan.*video|minimax.*hailuo|hailuo|video/.test(modelLower)) {
-        counts.video++;
-      } else if (/gemini.*image|dall|flux|sd-|stable.*diffusion|wan.*image|midjourney|seedream|qwen.*image|imagen|image-/.test(modelLower)) {
-        counts.image++;
-      } else if (/tts|speech|voice|clone|fish|audio|sound|bark|openvoice/.test(modelLower)) {
-        counts.tts++;
-      } else {
-        counts.chat++;
-      }
-    });
-    return counts;
+    return countModelsByCategory(allAvailableModels);
   }, [allAvailableModels]);
+
+  // 按分类过滤的模型列表
+  const filteredModels = React.useMemo(() => {
+    return filterModelsByCategory(allAvailableModels, cacheSubTab);
+  }, [allAvailableModels, cacheSubTab]);
+
+  // 移动模型到指定分类
+  const moveModelToCategory = (modelName: string, targetCategory: ModelCategory) => {
+    setSettings(prev => {
+      const newCache = { ...prev.model_cache };
+      // 从所有分类中移除
+      (Object.keys(newCache) as Array<keyof ModelCache>).forEach(cat => {
+        newCache[cat] = (newCache[cat] || []).filter((m: string) => m !== modelName);
+      });
+      // 添加到目标分类
+      newCache[targetCategory] = [...(newCache[targetCategory] || []), modelName];
+      return { ...prev, model_cache: newCache };
+    });
+    setMovingModel(null);
+  };
 
   // 1. 获取配置数据
   useEffect(() => {
@@ -194,12 +269,14 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       if (res.ok) {
         const data = await res.json();
         if (!data.model_cache) {
-          data.model_cache = { chat: [], image: [], video: [], tts: [] };
+          data.model_cache = { chat: [], image: [], video: [], tts: [], search: [], other: [] };
         } else {
           if (!data.model_cache.chat) data.model_cache.chat = [];
           if (!data.model_cache.image) data.model_cache.image = [];
           if (!data.model_cache.video) data.model_cache.video = [];
           if (!data.model_cache.tts) data.model_cache.tts = [];
+          if (!data.model_cache.search) data.model_cache.search = [];
+          if (!data.model_cache.other) data.model_cache.other = [];
         }
         setSettings(data);
       }
@@ -622,10 +699,12 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
         };
 
         const updatedCache = data.categorized ? {
-          chat: Array.from(new Set([...settings.model_cache.chat, ...data.categorized.chat])),
-          image: Array.from(new Set([...settings.model_cache.image, ...data.categorized.image])),
-          video: Array.from(new Set([...settings.model_cache.video, ...data.categorized.video])),
-          tts: Array.from(new Set([...(settings.model_cache.tts || []), ...(data.categorized.tts || [])]))
+          chat: Array.from(new Set([...settings.model_cache.chat, ...(data.categorized.chat || [])])),
+          image: Array.from(new Set([...settings.model_cache.image, ...(data.categorized.image || [])])),
+          video: Array.from(new Set([...settings.model_cache.video, ...(data.categorized.video || [])])),
+          tts: Array.from(new Set([...settings.model_cache.tts, ...(data.categorized.tts || [])])),
+          search: Array.from(new Set([...settings.model_cache.search, ...(data.categorized.search || [])])),
+          other: [...(settings.model_cache.other || [])]
         } : settings.model_cache;
 
         setSettings({
@@ -707,7 +786,9 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
         enabled: true,
         baseUrl: customProviderBaseUrl.trim(),
         apiKey: customProviderApiKey.trim(),
-        models: []
+        models: [],
+        name: customProviderName.trim() || pid,
+        icon: customProviderIcon.trim() || '🔌'
       };
       return {
         ...prev,
@@ -756,6 +837,25 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
     setProviderTestStatus(updatedStatus);
 
     alert('已移除，点击下方“保存”按钮即可写入磁盘存盘生效！');
+  };
+
+  // 6.6. 保存编辑厂商
+  const handleSaveEditProvider = () => {
+    if (!editingProvider) return;
+    const { id, name, icon, baseUrl, apiKey } = editingProvider;
+    const customInfo = { name, icon };
+    setLocalCustomProviderNames(prev => ({ ...prev, [id]: customInfo }));
+    const savedCustom = localStorage.getItem('custom_providers');
+    let customList = savedCustom ? JSON.parse(savedCustom) : {};
+    customList[id] = customInfo;
+    localStorage.setItem('custom_providers', JSON.stringify(customList));
+    setSettings(prev => {
+      const updatedProviders = { ...prev.providers };
+      const existing = updatedProviders[id] || { enabled: false, models: [] };
+      updatedProviders[id] = { ...existing, baseUrl, apiKey: apiKey || existing.apiKey };
+      return { ...prev, providers: updatedProviders };
+    });
+    setEditingProvider(null);
   };
 
   // 7. 工作流解析与管理 (RunningHub)
@@ -1372,17 +1472,14 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                         flexDirection: 'column',
                         gap: '8px'
                       }}>
-                        {[
-                          { id: 'image', label: '生图 🎨', color: 'hsl(var(--accent-secondary))' },
-                          { id: 'tts', label: '音频 🎙️', color: '#38bdf8' },
-                          { id: 'video', label: '视频 📹', color: '#eab308' },
-                          { id: 'chat', label: '聊天/文本 🧠', color: 'hsl(var(--accent-primary))' }
-                        ].map(tab => {
-                          const count = categoryModelCounts[tab.id as keyof typeof categoryModelCounts] || 0;
+                        {/* 模型分类 Tab */}
+                        {(Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[]).map(catId => {
+                          const config = MODEL_CATEGORY_CONFIG[catId];
+                          const count = categoryModelCounts[catId] || 0;
                           return (
                             <button
-                              key={tab.id}
-                              onClick={() => setCacheSubTab(tab.id as any)}
+                              key={catId}
+                              onClick={() => setCacheSubTab(catId)}
                               style={{
                                 width: '100%',
                                 padding: '10px 14px',
@@ -1391,26 +1488,26 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                 border: 'none',
                                 cursor: 'pointer',
                                 fontSize: '12px',
-                                fontWeight: cacheSubTab === tab.id ? 600 : 400,
-                                background: cacheSubTab === tab.id ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
-                                color: cacheSubTab === tab.id ? '#ffffff' : 'hsl(var(--text-secondary))',
-                                borderLeft: cacheSubTab === tab.id ? `3px solid ${tab.color}` : '3px solid transparent',
+                                fontWeight: cacheSubTab === catId ? 600 : 400,
+                                background: cacheSubTab === catId ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
+                                color: cacheSubTab === catId ? '#ffffff' : 'hsl(var(--text-secondary))',
+                                borderLeft: cacheSubTab === catId ? `3px solid ${config.color}` : '3px solid transparent',
                                 transition: 'all 0.2s',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between'
                               }}
                               onMouseEnter={(e) => {
-                                if (cacheSubTab !== tab.id) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                                if (cacheSubTab !== catId) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
                               }}
                               onMouseLeave={(e) => {
-                                if (cacheSubTab !== tab.id) e.currentTarget.style.background = 'transparent';
+                                if (cacheSubTab !== catId) e.currentTarget.style.background = 'transparent';
                               }}
                             >
-                              <span>{tab.label}</span>
+                              <span>{config.emoji} {config.label}</span>
                               <span style={{
                                 fontSize: '10px',
-                                background: cacheSubTab === tab.id ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.08)',
+                                background: cacheSubTab === catId ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.08)',
                                 padding: '1px 6px',
                                 borderRadius: '10px',
                                 color: '#ffffff',
@@ -1439,9 +1536,11 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                           gap: '10px',
                           paddingRight: '6px'
                         }}>
-                          {allAvailableModels.map((item: any, index: number) => {
-                            const isActive = Array.isArray(settings.model_cache[cacheSubTab]) && 
+                          {filteredModels.map((item: any, index: number) => {
+                            const isActive = Array.isArray(settings.model_cache[cacheSubTab]) &&
                               settings.model_cache[cacheSubTab].includes(item.modelName);
+                            const isRecommended = isRecommendedModel(item.modelName, item.providerId);
+                            const isNew = isNewModel(item.modelName);
 
                             return (
                               <div
@@ -1450,8 +1549,8 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                 style={{
                                   padding: '12px 14px',
                                   background: isActive ? 'rgba(139, 92, 246, 0.04)' : 'rgba(255, 255, 255, 0.01)',
-                                  border: isActive 
-                                    ? '1px solid rgba(139, 92, 246, 0.22)' 
+                                  border: isActive
+                                    ? '1px solid rgba(139, 92, 246, 0.22)'
                                     : '1px solid rgba(255, 255, 255, 0.04)',
                                   borderRadius: '8px',
                                   display: 'flex',
@@ -1476,49 +1575,160 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                 }}
                               >
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '75%', pointerEvents: 'none' }}>
-                                  <div 
-                                    title={item.modelName}
-                                    style={{
-                                      fontSize: '11px',
-                                      fontWeight: 600,
-                                      color: isActive ? '#ffffff' : '#d4d4d8',
-                                      fontFamily: 'monospace',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    {item.modelName}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <div
+                                      title={item.modelName}
+                                      style={{
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        color: isActive ? '#ffffff' : '#d4d4d8',
+                                        fontFamily: 'monospace',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      {item.modelName}
+                                    </div>
+                                    {isRecommended && (
+                                      <span style={{
+                                        fontSize: '9px',
+                                        fontWeight: 600,
+                                        padding: '1px 5px',
+                                        borderRadius: '3px',
+                                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                        color: '#ffffff',
+                                        textShadow: '0 1px 1px rgba(0,0,0,0.2)'
+                                      }}>
+                                        ⭐ 推荐
+                                      </span>
+                                    )}
+                                    {isNew && !isRecommended && (
+                                      <span style={{
+                                        fontSize: '9px',
+                                        fontWeight: 600,
+                                        padding: '1px 5px',
+                                        borderRadius: '3px',
+                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                        color: '#ffffff',
+                                        textShadow: '0 1px 1px rgba(0,0,0,0.2)'
+                                      }}>
+                                        🆕 最新
+                                      </span>
+                                    )}
                                   </div>
                                   <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <span>{item.icon}</span>
                                     <span>{item.providerName}</span>
+                                    <span style={{ color: '#a78bfa' }}>({getModelCategory(item.modelName)})</span>
                                   </div>
                                 </div>
 
-                                {/* Toggle 开关 */}
-                                <div 
-                                  style={{
-                                    width: '36px',
-                                    height: '20px',
-                                    borderRadius: '10px',
-                                    background: isActive ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.1)',
-                                    position: 'relative',
-                                    transition: 'background 0.2s ease-in-out',
-                                    pointerEvents: 'none'
-                                  }}
-                                >
-                                  <div style={{
-                                    width: '16px',
-                                    height: '16px',
-                                    borderRadius: '50%',
-                                    background: '#ffffff',
-                                    position: 'absolute',
-                                    top: '2px',
-                                    left: isActive ? '18px' : '2px',
-                                    transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
-                                  }} />
+                                {/* 右侧操作区 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {/* 移动到下拉菜单 */}
+                                  <div style={{ position: 'relative' }}>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMovingModel(movingModel === item.modelName ? null : item.modelName);
+                                      }}
+                                      style={{
+                                        padding: '3px 6px',
+                                        background: 'rgba(167, 139, 250, 0.1)',
+                                        border: '1px solid rgba(167, 139, 250, 0.2)',
+                                        borderRadius: '4px',
+                                        fontSize: '10px',
+                                        color: '#a78bfa',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '2px'
+                                      }}
+                                    >
+                                      🔄 移动
+                                    </button>
+                                      {movingModel === item.modelName && (
+                                        <div style={{
+                                          position: 'absolute',
+                                          top: '100%',
+                                          right: 0,
+                                          marginTop: '4px',
+                                          background: 'rgba(15, 15, 20, 0.98)',
+                                          border: '1px solid rgba(255,255,255,0.1)',
+                                          borderRadius: '6px',
+                                          padding: '4px',
+                                          zIndex: 1000,
+                                          minWidth: '100px',
+                                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                                        }}>
+                                          {/* 排除当前分类的选项 */}
+                                          {(Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[])
+                                            .filter(catId => catId !== getModelCategory(item.modelName))
+                                            .map(catId => {
+                                              const config = MODEL_CATEGORY_CONFIG[catId];
+                                              return (
+                                                <button
+                                                  key={catId}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    moveModelToCategory(item.modelName, catId);
+                                                  }}
+                                                  style={{
+                                                    width: '100%',
+                                                    padding: '6px 10px',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    color: '#d4d4d8',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                  }}
+                                                  onMouseEnter={(e) => {
+                                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                                    e.currentTarget.style.color = '#fff';
+                                                  }}
+                                                  onMouseLeave={(e) => {
+                                                    e.currentTarget.style.background = 'transparent';
+                                                    e.currentTarget.style.color = '#d4d4d8';
+                                                  }}
+                                                >
+                                                  {config.emoji} {config.label}
+                                                </button>
+                                              );
+                                            })}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Toggle 开关 */}
+                                  <div
+                                    style={{
+                                      width: '36px',
+                                      height: '20px',
+                                      borderRadius: '10px',
+                                      background: isActive ? 'hsl(var(--accent-primary))' : 'rgba(255, 255, 255, 0.1)',
+                                      position: 'relative',
+                                      transition: 'background 0.2s ease-in-out',
+                                      pointerEvents: 'none'
+                                    }}
+                                  >
+                                    <div style={{
+                                      width: '16px',
+                                      height: '16px',
+                                      borderRadius: '50%',
+                                      background: '#ffffff',
+                                      position: 'absolute',
+                                      top: '2px',
+                                      left: isActive ? '18px' : '2px',
+                                      transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+                                    }} />
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -1664,6 +1874,107 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                       </div>
                     )}
 
+                    {/* 编辑厂商表单 */}
+                    {editingProvider && (
+                      <div className="glass-card" style={{
+                        padding: '20px',
+                        background: 'rgba(59, 130, 246, 0.05)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px',
+                        animation: 'fadeIn 0.2s ease'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#60a5fa', margin: 0 }}>✏️ 编辑厂商: {editingProvider.id}</h4>
+                          <button
+                            onClick={() => setEditingProvider(null)}
+                            style={{
+                              background: 'rgba(255,255,255,0.05)',
+                              color: 'hsl(var(--text-secondary))',
+                              padding: '4px 12px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              border: '1px solid rgba(255,255,255,0.1)'
+                            }}
+                          >
+                            ✖️ 取消
+                          </button>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div>
+                            <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', marginBottom: '4px' }}>显示名称:</div>
+                            <input
+                              type="text"
+                              value={editingProvider.name}
+                              onChange={(e) => setEditingProvider({ ...editingProvider, name: e.target.value })}
+                              style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '8px 12px', color: '#fff', fontSize: '13px', outline: 'none' }}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', marginBottom: '4px' }}>图标:</div>
+                            <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                              {['🔌', '⚡', '🦄', '🌋', '🍊', '📹', '🧠', '🐳', '🗣️', '🎨', '🎬', '🎵', '🔮', '🚀', '💎', '🌟'].map(emoji => (
+                                <span
+                                  key={emoji}
+                                  onClick={() => setEditingProvider({ ...editingProvider, icon: emoji })}
+                                  style={{
+                                    fontSize: '14px',
+                                    cursor: 'pointer',
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    background: editingProvider.icon === emoji ? 'rgba(59, 130, 246, 0.3)' : 'transparent',
+                                    border: editingProvider.icon === emoji ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid transparent',
+                                  }}
+                                >
+                                  {emoji}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', marginBottom: '4px' }}>Base URL:</div>
+                          <input
+                            type="text"
+                            value={editingProvider.baseUrl}
+                            onChange={(e) => setEditingProvider({ ...editingProvider, baseUrl: e.target.value })}
+                            placeholder="https://..."
+                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', marginBottom: '4px' }}>API Key:</div>
+                          <input
+                            type="password"
+                            value={editingProvider.apiKey}
+                            onChange={(e) => setEditingProvider({ ...editingProvider, apiKey: e.target.value })}
+                            placeholder="sk-... (留空则保留原值)"
+                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={handleSaveEditProvider}
+                            style={{
+                              background: 'hsl(var(--accent-primary))',
+                              color: '#fff',
+                              padding: '8px 20px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: 'none'
+                            }}
+                          >
+                            💾 保存修改
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       {currentProviders.map((key) => {
                         const info = allProviderNames[key] || { name: `自定义厂商: ${key}`, icon: '🔌' };
@@ -1690,7 +2001,30 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                 <span style={{ fontSize: '16px' }}>{info.icon}</span>
                                 <span style={{ fontSize: '13px', fontWeight: 600 }}>{info.name}</span>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {/* 编辑按钮 - 所有厂商都可以编辑 */}
+                                <button
+                                  onClick={() => {
+                                    setEditingProvider({
+                                      id: key,
+                                      name: info.name,
+                                      icon: info.icon,
+                                      baseUrl: config.baseUrl || '',
+                                      apiKey: config.apiKey || ''
+                                    });
+                                  }}
+                                  style={{
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                                    color: '#60a5fa',
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  ✏️ 编辑
+                                </button>
                                 {!providerNames[key] && (
                                   <button
                                     onClick={() => handleDeleteCustomProvider(key)}
@@ -1707,12 +2041,12 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                     onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.35)'}
                                     onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
                                   >
-                                    🗑️ 删除厂商
+                                    🗑️ 删除
                                   </button>
                                 )}
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                                  <input 
-                                    type="checkbox" 
+                                  <input
+                                    type="checkbox"
                                     checked={config.enabled}
                                     onChange={(e) => updateProviderConfig(key, { enabled: e.target.checked })}
                                     style={{

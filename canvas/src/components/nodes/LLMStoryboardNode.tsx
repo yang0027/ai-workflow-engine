@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/react';
+import { useModelSelector } from '../../hooks/useModelSelector';
 
 interface Skill {
   id: string;
@@ -114,61 +115,36 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
   }, []);
 
   const providerId = data.inputs?.providerId || 'minimax';
+  const model = data.inputs?.model || '';
 
-  // 动态聚合并显示所有已开启的内置和自定义 API 服务商
-  const activeProviders = useMemo(() => {
-    if (!settings || !settings.providers) {
-      return [
-        { id: 'minimax', name: 'MiniMax (海螺AI)', icon: '🐚' },
-        { id: 'deepseek', name: 'DeepSeek', icon: '🐋' },
-        { id: 'openai', name: 'OpenAI', icon: '🧠' },
-        { id: 'ali', name: '阿里通义千问', icon: '☁️' },
-        { id: 'volcengine', name: '火山引擎', icon: '🌋' }
-      ];
-    }
-    const builtInIcons: Record<string, string> = {
-      minimax: '🐚', deepseek: '🐋', openai: '🧠', ali: '☁️', volcengine: '🌋', runninghub: '⚡'
-    };
-    return Object.keys(settings.providers)
-      .filter(pid => settings.providers[pid].enabled && pid !== 'runninghub') // LLM 剧本节点不需要将 RunningHub 作为常规 API 服务商展示
-      .map(pid => ({
-        id: pid,
-        name: settings.providers[pid].name || pid,
-        icon: settings.providers[pid].icon || builtInIcons[pid] || '🔌'
+  // 使用统一的模型选择钩子
+  const { providers: activeProviders, models: currentProviderModels, setProviderId: handleProviderChange, setModel: handleModelChange } = useModelSelector({
+    capability: 'chat',
+    settings,
+    currentProviderId: providerId,
+    currentModel: model,
+    onProviderChange: (newProviderId) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, providerId: newProviderId } } };
+        }
+        return n;
       }));
-  }, [settings]);
-
-  const currentProviderModels = useMemo(() => {
-    const defaultModels = DEFAULT_PROVIDER_LLM_MODELS[providerId] || chatModels;
-    if (!settings || !settings.providers || !settings.providers[providerId]) {
-      return defaultModels;
+    },
+    onModelChange: (newModel) => {
+      setNodes((nodes: any[]) => nodes.map((n) => {
+        if (n.id === id) {
+          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
+        }
+        return n;
+      }));
     }
-    const provider = settings.providers[providerId];
-    if (!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) {
-      return defaultModels;
-    }
-    
-    // 核心重构：与大仓中已勾选的聊天模型进行求交集，实现真正的模型点选分类过滤
-    const cachedChatModels = settings.model_cache?.chat || [];
-    const filtered = provider.models.filter((m: string) => cachedChatModels.includes(m));
-    if (filtered.length > 0) {
-      return filtered;
-    }
-
-    // 降级：如果交集为空，才使用默认的正则分类过滤
-    const llmKeywords = /gpt|claude|qwen|deepseek|minimax|doubao|glm|chat|llm/i;
-    const regexFiltered = provider.models.filter((m: string) => llmKeywords.test(m));
-    return regexFiltered.length > 0 ? regexFiltered : provider.models;
-  }, [settings, providerId, chatModels]);
-
-  const model = data.inputs?.model || currentProviderModels[0] || 'MiniMax-M2.7';
+  });
 
   // 当服务商或可选模型列表变化时，自动校验并重置当前选中的模型
   useEffect(() => {
-    if (currentProviderModels.length > 0) {
-      if (!currentProviderModels.includes(model)) {
-        handleInputChange('model', currentProviderModels[0]);
-      }
+    if (currentProviderModels.length > 0 && model && !currentProviderModels.includes(model)) {
+      handleModelChange(currentProviderModels[0]);
     }
   }, [providerId, currentProviderModels, model]);
 

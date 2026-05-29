@@ -1,0 +1,151 @@
+Starting from line 792:
+792:   const handleInjectCommunityTemplate = (templateType: 'auto-storyboard' | 'face-consistency' | 'video-fusion-group') => {
+793:     const groupId = `group-${Date.now()}`;
+794:     const node1Id = `node1-${Date.now()}`;
+795:     const node2Id = `node2-${Date.now()}`;
+796:     const node3Id = `node3-${Date.now()}`;
+797: 
+798:     let newNodes: Node[] = [];
+799:     let newEdges: Edge[] = [];
+800: 
+801:     if (templateType === 'auto-storyboard') {
+802:       newNodes = [
+803:         {
+804:           id: groupId,
+805:           type: 'purple-group',
+806:           position: { x: 150, y: 100 },
+807:           style: { width: 1160, height: 380 },
+808:           data: { label: '🎬 全自动剧本分镜组 (RunningHub)' }
+809:         },
+810:         {
+811:           id: node1Id,
+812:           type: 'prompt-source',
+813:           position: { x: 40, y: 80 },
+814:           parentId: groupId,
+815:           extent: 'parent' as const,
+816:           data: {
+817:             inputs: {
+818:               text: '在一个被反重力充斥的魔法世界中，下着逆流升空的霓虹代码雨。少女张开晶体双翅翱翔。'
+819:             }
+820:           }
+821:         },
+822:         {
+823:           id: node2Id,
+824:           type: 'llm-service',
+825:           position: { x: 420, y: 80 },
+826:           parentId: groupId,
+827:           extent: 'parent' as const,
+828:           data: {
+829:             inputs: {
+830:               providerId: 'minimax',
+831:               model: 'minimax-m2.7-chat',
+832:               skillId: 'storyboard-expert',
+833:               temperature: 0.7
+834:             }
+835:           }
+836:         },
+837:         {
+838:           id: node3Id,
+839:           type: 'image-service',
+840:           position: { x: 800, y: 80 },
+841:           parentId: groupId,
+842:           extent: 'parent' as const,
+843:           data: {
+844:             inputs: {
+845:               providerId: 'minimax',
+846:               model: 'flux-schnell',
+847:               size: '1024x1024',
+848:               cfg: 7.5,
+849:               steps: 25
+850:             }
+851:           }
+852:         }
+853:       ];
+854: 
+855:       newEdges = [
+856:         {
+857:           id: `e-template-1-${Date.now()}`,
+858:           source: node1Id,
+859:           sourceHandle: 'output',
+860:           target: node2Id,
+861:           targetHandle: 'input',
+862:           type: 'button',
+863:           animated: true,
+864:           style: { stroke: 'hsl(var(--accent-primary))', strokeWidth: 2 }
+865:         },
+866:         {
+867:           id: `e-template-2-${Date.now()}`,
+868:           source: node2Id,
+869:           sourceHandle: 'output',
+870:           target: node3Id,
+871:           targetHandle: 'input',
+872:           type: 'button',
+873:           animated: true,
+874:           style: { stroke: 'hsl(var(--accent-secondary))', strokeWidth: 2 }
+875:         }
+876:       ];
+877:     } else if (templateType === 'face-consistency') {
+878:       newNodes = [
+879:         {
+880:           id: groupId,
+881:           type: 'purple-group',
+882:           position: { x: 150, y: 100 },
+883:           style: { width: 1160, height: 380 },
+884:           data: { label: '🎭 AIX 独家面部一致性洗图组' }
+885:         },
+886:         {
+887:           id: node1Id,
+888:           type: 'prompt-source',
+889:           position: { x: 40, y: 80 },
+890:           parentId: groupId,
+891:           extent: 'parent' as const,
+892:           data: {
+893:             inputs: {
+894:               text: '一个赛博机甲少女的原画参考'
+895:             }
+896:           }
+897:         },
+898:         {
+899:           id: node2Id,
+900:           type: 'image-service',
+901:           position: { x: 420, y: 80 },
+902:           parentId: groupId,
+903:           extent: 'parent' as const,
+904:           data: {
+905:             inputs: {
+906:               providerId: 'minimax',
+907:               model: 'flux-schnell',
+908:               size: '1024x1024',
+909:               cfg: 7.5,
+910:               steps: 25
+911:             }
+912:           }
+913:         },
+914:         {
+915:           id: node3Id,
+916:           type: 'custom-workflow',
+917:           position: { x: 800, y: 80 },
+918:           parentId: groupId,
+919:           extent: 'parent' as const,
+920:           data: {
+921:             label: '🎭 RunningHub 面部一致性洗图',
+922:             source: 'runninghub' as const,
+923:             runningHubId: 'rh_wf_face_consistency',
+924:             workflowIdOrJson: 'rh_wf_face_consistency',
+925:             mappings: [
+926:               { portId: 'port_cfg', nodeId: '10', fieldName: 'cfg', displayName: '🎛️ 缪斯 CFG 微调' },
+927:               { portId: 'port_denoise', nodeId: '10', fieldName: 'denoise', displayName: '⚡ 降噪系数 Denoise' },
+928:               { portId: 'port_prompt', nodeId: '6', fieldName: 'text', displayName: '📖 提示词 Prompt' }
+929:             ],
+930:             inputs: {}
+931:           }
+932:         }
+933:       ];
+934: 
+935:       newEdges = [
+936:         {
+937:           id: `e-template-1-${Date.now()}`,
+938:           source: node1Id,
+939:           sourceHandle: 'output',
+940:           target: node2Id,
+941:           targetHandle: 'input',

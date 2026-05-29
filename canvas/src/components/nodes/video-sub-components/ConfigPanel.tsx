@@ -1,6 +1,7 @@
 import React from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
-import { useVideoNodeLogic, DEFAULT_PROVIDER_VIDEO_MODELS } from './useVideoNodeLogic';
+import { useVideoNodeLogic } from './useVideoNodeLogic';
+import { getModelsForProvider } from '../../../hooks/useModelSelector';
 
 interface ConfigPanelProps {
   id: string;
@@ -167,14 +168,25 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 8px;
           padding: 6px;
-          display: none;
           flex-direction: column;
           gap: 4px;
           box-shadow: 0 10px 25px rgba(0,0,0,0.4);
           z-index: 2010;
+          /* 默认隐藏但保留布局空间，使用 visibility + opacity 替代 display */
+          visibility: hidden;
+          opacity: 0;
+          /* 缓慢淡出，增加手感 */
+          transition: visibility 0.2s ease 0.1s, opacity 0.2s ease 0.1s;
         }
-        .hover-vendor-item:hover .sub-model-list-hover {
-          display: flex;
+        .hover-vendor-item:hover > .sub-model-list-hover {
+          visibility: visible;
+          opacity: 1;
+          transition: visibility 0s, opacity 0.1s ease 0s;
+        }
+        .sub-model-list-hover:hover {
+          visibility: visible;
+          opacity: 1;
+          transition: visibility 0s, opacity 0.1s ease 0s;
         }
       `}</style>
 
@@ -519,12 +531,22 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
                 {activeProviders.map(v => {
-                  const providerModels = settings?.providers?.[v.id]?.models || DEFAULT_PROVIDER_VIDEO_MODELS[v.id] || [];
-                  const isBuiltIn = ['vidu', 'volcengine', 'minimax', 'ali', 'deepseek', 'runninghub'].includes(v.id);
-                  const filtered = isBuiltIn 
-                    ? providerModels.filter((m: string) => /video|vidu|seedance|wanx|sora|ray|svd|cogvideo|luma|kling|hailuo/i.test(m))
-                    : providerModels;
-                  const finalModels = filtered.length > 0 ? filtered : providerModels;
+                  // 使用统一的模型获取函数
+                  const finalModels = getModelsForProvider(v.id, 'video', settings);
+
+                  // 如果没有匹配的模型，显示禁用状态
+                  if (finalModels.length === 0) {
+                    return (
+                      <div 
+                        key={v.id} 
+                        className="hover-vendor-item"
+                        style={{ opacity: 0.5, cursor: 'default' }}
+                      >
+                        <span>{v.name}</span>
+                        <span style={{ fontSize: '8px', opacity: 0.3 }}>—</span>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div 
@@ -535,7 +557,7 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
                         handleInputChange('model', finalModels[0] || '');
                       }}
                     >
-                      <span>{v.label}</span>
+                      <span>{v.name}</span>
                       <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
 
                       {/* 二级级联模型列表 */}
