@@ -241,13 +241,42 @@ export function usePromptSourceNodeLogic({
         imageBase64 = await fetchImageAsBase64(connectedImage);
       }
 
+      // 有图片但当前模型不支持 vision 时，在同 provider 下找 VL 模型替换
+      let effectiveVendor = activeVendor;
+      let effectiveModel = selectedModel;
+      if (imageBase64 && settings?.providers) {
+        const pModels = settings.providers[activeVendor]?.models || [];
+        const vlModel = pModels.find((m: string) =>
+          m.toLowerCase().startsWith('qwen') && m.toLowerCase().includes('vl')
+        );
+        if (vlModel && vlModel !== selectedModel) {
+          effectiveModel = vlModel;
+          console.log(`[图像反推] 当前模型 ${selectedModel} 不支持 vision，自动切换到同 provider VL 模型: ${vlModel}`);
+          // 同步更新 node data 中的模型
+          setNodes((nodes) =>
+            nodes.map((n) => {
+              if (n.id === id) {
+                return {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    inputs: { ...((n.data as any)?.inputs || {}), model: vlModel }
+                  }
+                };
+              }
+              return n;
+            })
+          );
+        }
+      }
+
       const systemPrompt = hasImage
         ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
         : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
 
       const body: any = {
-        providerId: activeVendor,
-        model: selectedModel,
+        providerId: effectiveVendor,
+        model: effectiveModel,
         messages: [
           {
             role: 'user',
