@@ -116,7 +116,7 @@ export class CanvasService {
   }
 
   // ============ 更新画布（同时创建快照）===========
-  update(id: string, data: { name?: string; nodes?: any[]; edges?: any[] }): CanvasData | null {
+  update(id: string, data: { name?: string; nodes?: any[]; edges?: any[]; snapshot?: boolean }): CanvasData | null {
     const canvas = this.canvases.get(id);
     if (!canvas || canvas.deletedAt) return null;
 
@@ -129,7 +129,7 @@ export class CanvasService {
     canvas.updatedAt = new Date().toISOString();
 
     // 当内容变化时创建快照（节点或连线有实际内容才保存）
-    if ((data.nodes && data.nodes.length > 0) || (data.edges && data.edges.length > 0)) {
+    if (data.snapshot !== false && ((data.nodes && data.nodes.length > 0) || (data.edges && data.edges.length > 0))) {
       this.createSnapshot(canvas.id, oldNodes, oldEdges, canvas.name, '更新前');
     }
 

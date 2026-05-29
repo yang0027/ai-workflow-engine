@@ -17,7 +17,7 @@ const MINIO_BUCKET = 'workflows';
 
 const fastify = Fastify({ 
   logger: true,
-  bodyLimit: 52428800 // 50MB 物理大载荷支持
+  bodyLimit: 600 * 1024 * 1024 // 600MB 物理大载荷支持，覆盖大视频 multipart 上传
 });
 
 // 注册 CORS 与 WebSocket 和文件上传
@@ -25,7 +25,7 @@ await fastify.register(cors, { origin: true });
 await fastify.register(websocket);
 await fastify.register(multipart, {
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB
+    fileSize: 500 * 1024 * 1024 // 500MB
   }
 });
 
@@ -474,32 +474,40 @@ fastify.post('/api/v1/upload/multipart', async (request, reply) => {
 fastify.get('/api/v1/media/:bucket/:filename', async (request, reply) => {
   const { bucket, filename } = request.params as { bucket: string; filename: string };
   try {
-    // 透传 Range 请求头（浏览器大文件分片加载必须）
-    const rangeHeader = request.headers['range'];
-    const headers: Record<string, string> = {};
-    if (rangeHeader) headers['Range'] = rangeHeader;
-
-    const minioRes = await fetch(`http://localhost:19000/${bucket}/${filename}`, { headers });
-
-    // 透传关键响应头
-    const contentType = minioRes.headers.get('content-type') || 'application/octet-stream';
-    const contentLength = minioRes.headers.get('content-length');
-    const contentRange = minioRes.headers.get('content-range');
-    const acceptRanges = minioRes.headers.get('accept-ranges');
+    const stat = await minioClient.statObject(bucket, filename) as any;
+    const objectSize = Number(stat.size || 0);
+    const contentType = stat.metaData?.['content-type'] || stat.metaData?.['Content-Type'] || 'application/octet-stream';
+    const rangeHeader = request.headers.range;
 
     reply.header('Content-Type', contentType);
     reply.header('Access-Control-Allow-Origin', '*');
     reply.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
-    if (contentLength) reply.header('Content-Length', contentLength);
-    if (contentRange) reply.header('Content-Range', contentRange);
-    if (acceptRanges) reply.header('Accept-Ranges', acceptRanges);
-    else reply.header('Accept-Ranges', 'bytes');
+    reply.header('Accept-Ranges', 'bytes');
     reply.header('Cache-Control', 'public, max-age=3600');
 
-    // 返回对应状态码（206 Partial Content 或 200）
-    const status = minioRes.status;
-    const body = await minioRes.arrayBuffer();
-    return reply.status(status).send(Buffer.from(body));
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+      if (match) {
+        const start = match[1] ? parseInt(match[1], 10) : 0;
+        const end = match[2] ? parseInt(match[2], 10) : objectSize - 1;
+        const safeEnd = Math.min(end, objectSize - 1);
+        const length = safeEnd - start + 1;
+
+        if (start >= objectSize || length <= 0) {
+          reply.header('Content-Range', `bytes */${objectSize}`);
+          return reply.status(416).send();
+        }
+
+        const partialStream = await minioClient.getPartialObject(bucket, filename, start, length);
+        reply.header('Content-Length', String(length));
+        reply.header('Content-Range', `bytes ${start}-${safeEnd}/${objectSize}`);
+        return reply.status(206).send(partialStream);
+      }
+    }
+
+    const objectStream = await minioClient.getObject(bucket, filename);
+    reply.header('Content-Length', String(objectSize));
+    return reply.status(200).send(objectStream);
   } catch (err: any) {
     fastify.log.error(`[Media Proxy] 代理失败 ${bucket}/${filename}: ${err.message}`);
     return reply.status(502).send({ error: `Media proxy failed: ${err.message}` });

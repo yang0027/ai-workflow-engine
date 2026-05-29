@@ -3,6 +3,7 @@ import { RunningHubService } from '../../../services/runninghub.service';
 import { useModelSelector, MODEL_KEYWORDS } from '../../../hooks/useModelSelector';
 import { useWorkflowSelector } from '../../../hooks/useWorkflowSelector';
 import { mapParams } from '../../../hooks/useParamMapper';
+import { getUpstreamData } from '../../../hooks/getUpstreamData';
 
 interface UseImageNodeLogicProps {
   id: string;
@@ -23,10 +24,6 @@ export function useImageNodeLogic({
 }: UseImageNodeLogicProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 性能特优：使用 Ref 缓存 nodes 和 edges 引用，防在拖拽阶段高频触发 useMemo 计算
-  const nodesRef = useRef(nodes);
-  const edgesRef = useRef(edges);
-
   // 性能特优：仅仅当节点图片或文本实质变化时才触发 Key 更新，彻底避开位置拖动时的 position 每一帧刷新
   const nodesDataKey = useMemo(() => {
     return nodes.map(n => {
@@ -37,97 +34,25 @@ export function useImageNodeLogic({
     }).join('|');
   }, [nodes]);
 
-  // 1. 解析上游指向当前节点的所有资产并进行严格去重，支持最多 6 个，同时支持图片、视频和音频
-  const connectedImages = useMemo(() => {
-    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref
-    nodesRef.current = nodes;
-    edgesRef.current = edges;
-
-    const currentEdges = edgesRef.current;
-    const currentNodes = nodesRef.current;
-
-    const connectedEdges = currentEdges.filter(e => e.target === id);
-    const imgs: { url: string; type: 'image' | 'video' | 'audio'; nodeName: string; nodeId: string }[] = [];
-
-    connectedEdges.forEach(edge => {
-      const srcNode = currentNodes.find(n => n.id === edge.source);
-      if (!srcNode) return;
-      const outputs = (srcNode.data?.outputs || {}) as any;
-      const inputs = (srcNode.data?.inputs || {}) as any;
-      
-      const val = outputs.output || outputs.text || outputs.storyboard || outputs.image || inputs.fileUrl || inputs.text || '';
-      if (!val || typeof val !== 'string') return;
-
-      const uploadFileType = inputs?.fileType || outputs?.fileType;
-      
-      let type: 'image' | 'video' | 'audio' = 'image';
-      
-      const isAudio = 
-        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.ogg') || val.endsWith('.m4a') ||
-        val.startsWith('data:audio/') || srcNode.type === 'tts-service' ||
-        (srcNode.type === 'upload-node' && uploadFileType === 'audio');
-        
-      const isVideo = 
-        val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') ||
-        val.startsWith('data:video/') || srcNode.type === 'video-fusion' ||
-        (srcNode.type === 'upload-node' && uploadFileType === 'video');
-
-      if (isAudio) type = 'audio';
-      else if (isVideo) type = 'video';
-
-      imgs.push({
-        url: val,
-        type,
-        nodeName: srcNode.data?.label || srcNode.data?.title || (type === 'image' ? '图像' : type === 'video' ? '视频' : '音频'),
-        nodeId: srcNode.id
-      });
-    });
-
-    // 严格按 nodeId 进行物理去重，防止 `@` 列表展示重复资产
-    const uniqueImgs: typeof imgs = [];
-    const seenIds = new Set<string>();
-    imgs.forEach(img => {
-      if (!seenIds.has(img.nodeId)) {
-        seenIds.add(img.nodeId);
-        uniqueImgs.push(img);
-      }
-    });
-
-    return uniqueImgs.slice(0, 6);
+  // 1. 统一读取上游数据：文本 Prompt 与多媒体引用同源解析，避免各节点重复扫描 edges/nodes
+  const upstreamData = useMemo(() => {
+    return getUpstreamData(id, edges, nodes);
   }, [edges, nodesDataKey, id]);
+
+  const connectedImages = useMemo(() => {
+    return upstreamData.all
+      .filter(item => item.type === 'image' || item.type === 'video' || item.type === 'audio')
+      .map(item => ({
+        url: item.value,
+        type: item.type as 'image' | 'video' | 'audio',
+        nodeName: item.nodeName,
+        nodeId: item.nodeId
+      }))
+      .slice(0, 6);
+  }, [upstreamData]);
 
   // 2. 智能提取文本 Prompt 连线数据
-  const connectedPrompt = useMemo(() => {
-    // 核心时序修复：在 render 渲染期同步且即时地更新 Ref
-    nodesRef.current = nodes;
-    edgesRef.current = edges;
-
-    const currentEdges = edgesRef.current;
-    const currentNodes = nodesRef.current;
-
-    const connectedEdges = currentEdges.filter(e => e.target === id);
-    const prompts: string[] = [];
-
-    connectedEdges.forEach(edge => {
-      const srcNode = currentNodes.find(n => n.id === edge.source);
-      if (!srcNode) return;
-      const outputs = (srcNode.data?.outputs || {}) as any;
-      const inputs = (srcNode.data?.inputs || {}) as any;
-      
-      const val = outputs.output || outputs.text || outputs.prompt || inputs.text || '';
-      if (!val || typeof val !== 'string') return;
-
-      const isResourceUrl =
-        val.startsWith('data:') || val.startsWith('http') ||
-        val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.mp4') || val.endsWith('.png') || val.endsWith('.jpg');
-
-      if (!isResourceUrl) {
-        prompts.push(val);
-      }
-    });
-
-    return prompts.join('\n');
-  }, [edges, nodesDataKey, id]);
+  const connectedPrompt = upstreamData.text;
 
   const isPromptConnected = connectedPrompt.length > 0;
   const isFaceRefConnected = connectedImages.length > 0;

@@ -27,16 +27,39 @@
     ],
     "edges": [],
     "createdAt": "2026-05-26T03:10:03.722Z",
-    "updatedAt": "2026-05-26T03:10:55.165Z"
+    "updatedAt": "2026-05-26T03:10:55.165Z",
+    "deletedAt": "2026-05-29T07:45:23.085Z"
   },
   {
     "id": "5790c2fc-59f9-464d-9679-88f62a7e692e",
     "name": "新画布 11:10:56",
-    "nodes": [],
+    "nodes": [
+      {
+        "id": "video-fusion-1779765060330",
+        "type": "video-fusion",
+        "position": {
+          "x": -730.2105263157896,
+          "y": 3.68421052631579
+        },
+        "width": 320,
+        "height": 480,
+        "data": {
+          "label": "📹 视频生成",
+          "inputs": {},
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      }
+    ],
     "edges": [],
     "createdAt": "2026-05-26T03:10:56.488Z",
-    "updatedAt": "2026-05-28T03:28:55.277Z",
-    "deletedAt": null
+    "updatedAt": "2026-05-29T07:45:13.509Z",
+    "deletedAt": "2026-05-29T07:45:29.109Z"
   },
   {
     "id": "28129bd2-c3ea-453a-b291-02afd8e13887",
@@ -44,8 +67,8 @@
     "nodes": [],
     "edges": [],
     "createdAt": "2026-05-28T02:58:54.232Z",
-    "updatedAt": "2026-05-28T03:28:51.811Z",
-    "deletedAt": null
+    "updatedAt": "2026-05-29T07:45:15.965Z",
+    "deletedAt": "2026-05-29T07:45:30.843Z"
   },
   {
     "id": "2f9764b9-05e9-44ba-82ea-f85bd27adb3c",
@@ -53,6 +76,211 @@
     "nodes": [],
     "edges": [],
     "createdAt": "2026-05-28T03:29:13.804Z",
-    "updatedAt": "2026-05-28T03:29:13.804Z"
+    "updatedAt": "2026-05-29T07:45:08.667Z",
+    "deletedAt": "2026-05-29T07:45:27.282Z"
+  },
+  {
+    "id": "1e8b9ff9-f7f8-4c8f-9e49-90e32b03c886",
+    "name": "测试",
+    "nodes": [
+      {
+        "id": "upload-node-1780040753798",
+        "type": "upload-node",
+        "position": {
+          "x": -162.78235944606084,
+          "y": -183.28315547625309
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": true,
+        "measured": {
+          "width": 180,
+          "height": 180
+        },
+        "dragging": false
+      },
+      {
+        "id": "upload-node-1780040755207",
+        "type": "upload-node",
+        "position": {
+          "x": 125.51050820372855,
+          "y": 50.83866060304784
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      },
+      {
+        "id": "upload-node-1780040756279",
+        "type": "upload-node",
+        "position": {
+          "x": 224.29856673347354,
+          "y": -126.06088606649548
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      },
+      {
+        "id": "prompt-source-1780040839175",
+        "type": "prompt-source",
+        "position": {
+          "x": -592.3997910931358,
+          "y": -195.50584957382907
+        },
+        "width": 320,
+        "height": 280,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📖 故事剧本源",
+          "inputs": {
+            "text": "一个女人",
+            "model": "gpt-5.4"
+          },
+          "outputs": {
+            "text": "[AI 智能优化剧本] 一个女人\n\n优化模型: gpt-5.4\n本场景具有极其强烈的科幻视觉冲击，建议搭配 Flux 闪电或 Wan-2.1 模型生成视频。",
+            "output": "[AI 智能优化剧本] 一个女人\n\n优化模型: gpt-5.4\n本场景具有极其强烈的科幻视觉冲击，建议搭配 Flux 闪电或 Wan-2.1 模型生成视频。"
+          },
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 280
+        },
+        "dragging": false
+      }
+    ],
+    "edges": [],
+    "createdAt": "2026-05-29T07:45:32.788Z",
+    "updatedAt": "2026-05-29T07:56:54.415Z"
+  },
+  {
+    "id": "59d0c08d-5ef9-4f90-8b58-bfa281e73658",
+    "name": "新画布 1780040762939",
+    "nodes": [
+      {
+        "id": "upload-node-1780040768382",
+        "type": "upload-node",
+        "position": {
+          "x": -15.557685829977872,
+          "y": -29.190060100144855
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      },
+      {
+        "id": "upload-node-1780040769350",
+        "type": "upload-node",
+        "position": {
+          "x": 281.28441943318006,
+          "y": -126.03216536330275
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": true
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      },
+      {
+        "id": "upload-node-1780040770350",
+        "type": "upload-node",
+        "position": {
+          "x": -118.71558056681998,
+          "y": -261.8216390475133
+        },
+        "width": 300,
+        "height": 260,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "image",
+            "fileUrl": "",
+            "fileName": ""
+          },
+          "outputs": {},
+          "isNew": true
+        },
+        "selected": true,
+        "measured": {
+          "width": 180,
+          "height": 180
+        }
+      }
+    ],
+    "edges": [],
+    "createdAt": "2026-05-29T07:46:02.953Z",
+    "updatedAt": "2026-05-29T07:46:18.516Z"
   }
 ]

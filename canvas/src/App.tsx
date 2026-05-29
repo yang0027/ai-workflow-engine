@@ -291,7 +291,7 @@ interface InputMapping {
 }
 
 function WorkflowCanvas() {
-  const { screenToFlowPosition, zoomTo, setCenter } = useReactFlow();
+  const { screenToFlowPosition, zoomTo, setCenter, fitView } = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
   const [showMiniMap, setShowMiniMap] = useState(false);
   
@@ -655,8 +655,42 @@ function WorkflowCanvas() {
   const [settingsActiveTab, setSettingsActiveTab] = useState<'comfy' | 'providers' | 'runninghub_api' | 'cache' | 'templates'>('comfy');
   const [isCanvasManagerOpen, setIsCanvasManagerOpen] = useState(false);
   const [currentCanvasId, setCurrentCanvasId] = useState<string | null>(null);
+  const canvasSwitchingUntilRef = React.useRef(0);
+  const canvasSaveTimerRef = React.useRef<number | null>(null);
   const [snapshotCanvasId, setSnapshotCanvasId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+
+  const saveCanvasNow = useCallback(async (canvasId: string | null = currentCanvasId, nodesSnapshot = nodes, edgesSnapshot = edges) => {
+    if (!canvasId) return;
+    try {
+      await fetch(`http://localhost:4000/api/v1/canvases/${canvasId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodes: nodesSnapshot, edges: edgesSnapshot, snapshot: false })
+      });
+    } catch (err) {
+      console.error('保存画布失败:', err);
+    }
+  }, [currentCanvasId, nodes, edges]);
+
+  // 后端画布库自动保存：画布列表读取 engine 数据，不能只写 localStorage。
+  React.useEffect(() => {
+    if (!currentCanvasId) return;
+    if (Date.now() < canvasSwitchingUntilRef.current) return;
+
+    if (canvasSaveTimerRef.current) {
+      window.clearTimeout(canvasSaveTimerRef.current);
+    }
+    canvasSaveTimerRef.current = window.setTimeout(() => {
+      void saveCanvasNow(currentCanvasId, nodes, edges);
+    }, 600);
+
+    return () => {
+      if (canvasSaveTimerRef.current) {
+        window.clearTimeout(canvasSaveTimerRef.current);
+      }
+    };
+  }, [currentCanvasId, nodes, edges, saveCanvasNow]);
 
   // 抽屉内部状态
   const [drawerLabel, setDrawerLabel] = useState('');
@@ -4383,6 +4417,7 @@ function WorkflowCanvas() {
   // ============ 画布管理回调 ============
   const handleNewCanvas = async () => {
     try {
+      await saveCanvasNow();
       const res = await fetch('http://localhost:4000/api/v1/canvases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4390,9 +4425,8 @@ function WorkflowCanvas() {
       });
       const data = await res.json();
       if (data.canvas) {
+        canvasSwitchingUntilRef.current = Date.now() + 800;
         setCurrentCanvasId(data.canvas.id);
-        setNodes([]);
-        setEdges([]);
         setNodes([]);
         setEdges([]);
         alert('已创建新画布');
@@ -4403,10 +4437,45 @@ function WorkflowCanvas() {
     }
   };
 
-  const handleSwitchCanvas = (id: string, canvas: any) => {
+  const handleSwitchCanvas = async (id: string, canvas: any) => {
+    await saveCanvasNow();
+
+    let nextNodes = Array.isArray(canvas.nodes)
+      ? canvas.nodes
+      : Array.isArray(canvas.data?.nodes)
+        ? canvas.data.nodes
+        : [];
+    let nextEdges = Array.isArray(canvas.edges)
+      ? canvas.edges
+      : Array.isArray(canvas.data?.edges)
+        ? canvas.data.edges
+        : [];
+
+    // 当前画布若被误保存为空，优先从最新非空快照自愈恢复，避免“列表有记录但画布空白”。
+    if (nextNodes.length === 0) {
+      try {
+        const snapshotsRes = await fetch(`http://localhost:4000/api/v1/canvases/${id}/snapshots`);
+        const snapshotsData = await snapshotsRes.json();
+        const latestNonEmptySnapshot = (snapshotsData.snapshots || []).find((snapshot: any) => Array.isArray(snapshot.nodes) && snapshot.nodes.length > 0);
+        if (latestNonEmptySnapshot) {
+          nextNodes = latestNonEmptySnapshot.nodes;
+          nextEdges = Array.isArray(latestNonEmptySnapshot.edges) ? latestNonEmptySnapshot.edges : [];
+          await saveCanvasNow(id, nextNodes, nextEdges);
+        }
+      } catch (err) {
+        console.warn('从画布快照自愈恢复失败:', err);
+      }
+    }
+
+    canvasSwitchingUntilRef.current = Date.now() + 800;
     setCurrentCanvasId(id);
-    if (canvas.nodes) setNodes(canvas.nodes);
-    if (canvas.edges) setEdges(canvas.edges);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    if (nextNodes.length > 0) {
+      window.setTimeout(() => {
+        fitView({ padding: 0.25, duration: 400, maxZoom: 0.95 });
+      }, 80);
+    }
     setIsCanvasManagerOpen(false);
   };
 
