@@ -232,96 +232,51 @@ export function usePromptSourceNodeLogic({
     }
 
     setGenerating(true);
+    let resultText = '';
+    let apiSuccess = false;
+
     try {
-      let resultText = '';
-
-      try {
-        // 如果有图片连接，先把 URL 转成 base64 再发送多模态消息
-        let imageBase64: string | null = null;
-        if (hasImage && connectedImage) {
-          try {
-            imageBase64 = await fetchImageAsBase64(connectedImage);
-          } catch (e) {
-            console.warn('图片转 base64 失败，将用 URL 描述代替:', e);
-          }
-        }
-
-        const systemPrompt = hasImage
-          ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
-          : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
-
-        const body: any = {
-          providerId: activeVendor,
-          model: selectedModel,
-          messages: [
-            {
-              role: 'user',
-              content: imageBase64
-                ? [
-                    { type: 'image_url', image_url: { url: imageBase64 } },
-                    { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
-                  ]
-                : textVal2
-            }
-          ],
-          systemPrompt
-        };
-
-        const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-
-        const resData = await res.json();
-        if (res.ok && resData.choices?.[0]?.message?.content) {
-          resultText = resData.choices[0].message.content;
-        } else if (resData.error) {
-          throw new Error(resData.error);
-        } else {
-          throw new Error('接口返回空');
-        }
-      } catch (e) {
-        console.warn('调用大模型接口失败:', e);
-        if (hasImage) {
-          resultText = `一只未来主义的机械猫，在霓虹漫天的赛博城市中展翅高飞，逆光的镜片反射出璀璨的代码雨，电影感，8K分辨率。\n\n${textVal2 || ''}`;
-        } else {
-          resultText = `[AI 智能优化剧本] ${textVal2}\n\n优化模型: ${selectedModel}\n本场景具有极其强烈的科幻视觉冲击，建议搭配 Flux 闪电或 Wan-2.1 模型生成视频。`;
-        }
+      let imageBase64: string | null = null;
+      if (hasImage && connectedImage) {
+        imageBase64 = await fetchImageAsBase64(connectedImage);
       }
 
-      setNodes((nodes) =>
-        nodes.map((n) => {
-          if (n.id === id) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                inputs: {
-                  ...((n.data as any)?.inputs || {}),
-                  text: resultText
-                },
-                outputs: {
-                  text: resultText,
-                  output: resultText
-                }
-              }
-            };
-          }
-          return n;
-        })
-      );
+      const systemPrompt = hasImage
+        ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
+        : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
 
-      window.dispatchEvent(
-        new CustomEvent('add-success-log', {
-          detail: {
-            nodeId: id,
-            nodeName: data.label || '文本',
-            model: selectedModel,
-            errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
+      const body: any = {
+        providerId: activeVendor,
+        model: selectedModel,
+        messages: [
+          {
+            role: 'user',
+            content: imageBase64
+              ? [
+                  { type: 'image_url', image_url: { url: imageBase64 } },
+                  { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
+                ]
+              : textVal2
           }
-        })
-      );
+        ],
+        systemPrompt
+      };
+
+      const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const resData = await res.json();
+      if (res.ok && resData.choices?.[0]?.message?.content) {
+        resultText = resData.choices[0].message.content;
+        apiSuccess = true;
+      } else if (resData.error) {
+        throw new Error(`API Error: ${resData.error}`);
+      } else {
+        throw new Error(`HTTP ${res.status} | Response: ${JSON.stringify(resData)}`);
+      }
     } catch (e: any) {
       window.dispatchEvent(
         new CustomEvent('add-failure-log', {
@@ -333,9 +288,43 @@ export function usePromptSourceNodeLogic({
           }
         })
       );
-    } finally {
       setGenerating(false);
+      return;
     }
+
+    setNodes((nodes) =>
+      nodes.map((n) => {
+        if (n.id === id) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                text: resultText
+              },
+              outputs: {
+                text: resultText,
+                output: resultText
+              }
+            }
+          };
+        }
+        return n;
+      })
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('add-success-log', {
+        detail: {
+          nodeId: id,
+          nodeName: data.label || '文本',
+          model: selectedModel,
+          errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
+        }
+      })
+    );
+    setGenerating(false);
   }, [data, connectedImageRef, connectedImage, textVal, activeVendor, selectedModel, id, setNodes]);
 
   const handleSpawnImageService = useCallback(() => {
