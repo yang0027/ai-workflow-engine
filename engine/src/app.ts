@@ -11,6 +11,9 @@ import { RunningHubAdapter } from './services/adapters/impl/RunningHubAdapter.js
 import { WorkflowTemplateService } from './services/workflow-templates/WorkflowTemplateService.js';
 import { ComfyUIWorkflowService } from './services/comfyui/ComfyUIWorkflowService.js';
 import { CanvasService } from './services/canvas/CanvasService.js';
+import { resolveImageProvider } from './services/providers/imageRegistry.js';
+import { generateImage as newApiGenerate } from './services/providers/adapters/NewAPIAdapter.js';
+import { generateImage as aliWanxGenerate } from './services/providers/adapters/AliWanxAdapter.js';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
@@ -410,15 +413,14 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
   }
 });
 
-// ============ 通用生图服务调度路由 ============
+// ============ 通用生图服务调度路由（基于 Provider Registry） ============
 fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
   try {
-    const { providerId, model, prompt, size = '1024x1024', response_format = 'url' } = request.body as {
+    const { providerId, model, prompt, size = '1024x1024' } = request.body as {
       providerId: string;
       model: string;
       prompt: string;
       size?: string;
-      response_format?: 'url' | 'b64_json';
     };
 
     if (!providerId || !model || !prompt) {
@@ -430,9 +432,34 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       return reply.status(400).send({ error: `Provider ${providerId} is not enabled` });
     }
 
-    let cleanUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
+    // Step 1: 查注册表，看这个 model 走哪个适配器
+    const entry = resolveImageProvider(model);
 
-    // ===== MiniMax 专属图片接口 (返回格式与 OpenAI 不同) =====
+    if (entry) {
+      console.log(`[Engine] Image model=${model} matched adapter=${entry.adapter} mode=${entry.mode}`);
+
+      if (entry.adapter === 'NewAPIAdapter') {
+        // 走 NewAPI: 提交到 zhangvip.top，轮询 apimart
+        const result = await newApiGenerate({ model, prompt, size });
+        return result;
+      }
+
+      if (entry.adapter === 'AliWanxAdapter') {
+        // 走阿里云百炼
+        const result = await aliWanxGenerate({
+          model,
+          prompt,
+          size,
+          n: 1,
+          apiKey: config.apiKey,
+        });
+        return result;
+      }
+    }
+
+    // Step 2: 注册表没命中，按 providerId 特殊处理（MiniMax / grsai）
+    let cleanUrl = (config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl);
+
     if (providerId === 'minimax') {
       const endpoint = `${cleanUrl}/image_generation`;
       console.log(`[Engine] MiniMax image generation at ${endpoint}, model=${model}`);
@@ -446,41 +473,30 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
         },
         timeout: 60000
       });
-      // MiniMax 返回 { id, data: { image_urls: ["..."] } }
-      // 统一转成 OpenAI 兼容格式: { data: [{ url: "..." }] }
       const imageUrls: string[] = response.data?.data?.image_urls || [];
       if (imageUrls.length === 0) {
         throw new Error('MiniMax 未返回图片 URL');
       }
-      return {
-        data: imageUrls.map((url: string) => ({ url }))
-      };
+      return { data: imageUrls.map((url: string) => ({ url })) };
     }
 
-    // ===== 通用 OpenAI 兼容接口 =====
-    // 检查是否是豆包/Seedream 等特殊调用
+    // ===== 通用 OpenAI 兼容接口兜底 =====
     let endpoint = `${cleanUrl}/images/generations`;
     if (providerId === 'grsai' && model.startsWith('nano-banana')) {
       endpoint = `${cleanUrl}/v1/draw/nano-banana`;
     }
 
-    console.log(`[Engine] Generating image via ${providerId} model ${model} at ${endpoint}`);
+    console.log(`[Engine] Fallback: generating image via ${providerId} model ${model} at ${endpoint}`);
 
-    // 如果是 b64_json 格式，需要将 base64 转为本地文件 URL
     const saveBase64ToFile = async (base64Data: string): Promise<string> => {
       const buffer = Buffer.from(base64Data, 'base64');
       const filename = `std-img-${Date.now()}-${Math.random().toString(36).substr(2, 8)}.png`;
       const outputDir = path.join(__dirname, '..', 'data', 'outputs');
-      
-      // 确保输出目录存在
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
       }
-      
       const filePath = path.join(outputDir, filename);
       fs.writeFileSync(filePath, buffer);
-
-      // 返回走网关代理的 URL，彻底解决跨域与公网访问不回显问题
       const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:3000';
       return `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${filename}`;
     };
@@ -490,7 +506,7 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       prompt: prompt,
       size: size,
       n: 1,
-      response_format: response_format
+      response_format: 'url'
     }, {
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -499,75 +515,21 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       timeout: 25000
     });
 
-    // 处理响应：将 b64_json 转为文件 URL
     if (response.data?.data && Array.isArray(response.data.data)) {
       const processedData = await Promise.all(response.data.data.map(async (item: any) => {
         if (item.b64_json) {
           const fileUrl = await saveBase64ToFile(item.b64_json);
-          console.log(`[Engine] Converted b64_json to URL: ${fileUrl}`);
           return { url: fileUrl };
-        }
-        // 异步 provider（如 gpt-image-2）返回 task_id → 自动轮询拿结果
-        if (item.task_id) {
-          console.log(`[Engine] Async task detected: ${item.task_id}, polling...`);
-          const result = await pollAsyncTask(cleanUrl, config.apiKey, item.task_id);
-          return result;
         }
         return item;
       }));
       return { data: processedData };
     }
 
-    // 异步 task_id 散落在根层级（如 provider 01 格式）
-    if (response.data?.task_id) {
-      console.log(`[Engine] Async task at root: ${response.data.task_id}, polling...`);
-      const result = await pollAsyncTask(cleanUrl, config.apiKey, response.data.task_id);
-      return { data: [result] };
-    }
-
     return response.data;
   } catch (err: any) {
     fastify.log.error(err);
     return reply.status(500).send({ error: err.message });
-  }
-
-  // === 功能分块：异步任务轮询 ===
-  // 输入：provider baseUrl, apiKey, task_id
-  // 输出：{ url: string } 或抛出错误
-  async function pollAsyncTask(baseUrl: string, apiKey: string, taskId: string): Promise<{ url: string }> {
-    const pollUrl = `${baseUrl}/images/generations/${taskId}`;
-    const maxAttempts = 30;
-    const intervalMs = 3000;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
-
-      const resp = await axios.get(pollUrl, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        timeout: 10000
-      });
-
-      const task = resp.data?.data?.[0];
-      if (!task) {
-        throw new Error(`Task ${taskId} 响应格式异常: ${JSON.stringify(resp.data)}`);
-      }
-
-      const status = task.status || task.output?.status;
-      console.log(`[Engine] Poll ${taskId} attempt ${i + 1}: status=${status}`);
-
-      if (status === 'completed' || status === 'succeeded') {
-        const imgUrl = task.url || task.output?.url || task.generation?.url;
-        if (!imgUrl) throw new Error(`Task ${taskId} completed 但无 url 字段`);
-        return { url: imgUrl };
-      }
-
-      if (status === 'failed' || status === 'error') {
-        const errMsg = task.error?.message || JSON.stringify(task.error);
-        throw new Error(`Task ${taskId} failed: ${errMsg}`);
-      }
-    }
-
-    throw new Error(`Task ${taskId} 轮询超时（${maxAttempts} 次）`);
   }
 });
 
@@ -733,7 +695,7 @@ fastify.post('/api/v1/canvases', async (request, reply) => {
 fastify.put('/api/v1/canvases/:id', async (request, reply) => {
   try {
     const { id } = request.params as { id: string };
-    const data = request.body as { name?: string; nodes?: any[]; edges?: any[] };
+    const data = request.body as { name?: string; nodes?: any[]; edges?: any[]; snapshot?: boolean };
     const canvas = canvasService.update(id, data);
     if (!canvas) {
       return reply.status(404).send({ error: 'Canvas not found' });
