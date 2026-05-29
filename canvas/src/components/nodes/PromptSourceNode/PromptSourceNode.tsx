@@ -34,6 +34,14 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
     settings: logic.settings,
     currentProviderId: activeVendor,
     currentModel: logic.selectedModel,
+    onProviderChange: (newProviderId) => {
+      const firstModel = getModelsForVendor(newProviderId)[0] || '';
+      setActiveVendor(newProviderId);
+      logic.doModelChange(firstModel);
+    },
+    onModelChange: (newModel) => {
+      logic.doModelChange(newModel);
+    }
   });
 
   // 点击空白关闭 popover

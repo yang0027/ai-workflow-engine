@@ -68,9 +68,9 @@ export function usePromptSourceNodeLogic({
     { scene: '1', prompt: '反重力城堡，代码雨逆流升空', tts: '在这个反重力世界中...' }
   ]);
 
-  // 选中的模型
-  const [activeVendor] = useState<string>('openai');
-  const selectedModel = data.inputs?.model || 'gpt-4o';
+  // 选中的模型：providerId 和 model 都从 node data 读取
+  const activeVendor = data.inputs?.providerId || 'ali';
+  const selectedModel = data.inputs?.model || '';
 
   // 文本值
   const textVal = data.inputs?.text || '';
