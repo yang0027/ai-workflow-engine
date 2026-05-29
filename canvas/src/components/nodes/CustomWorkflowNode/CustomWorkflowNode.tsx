@@ -5,6 +5,7 @@ import { useCustomWorkflowNodeLogic } from './CustomWorkflowNode.logic';
 import { ImageUploadArea } from '../../ImageUploadArea';
 import { ConnectedImagePreview } from '../../ConnectedImagePreview';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { WorkflowTextarea } from '../../WorkflowTextarea';
 
 export default function CustomWorkflowNode({ id, data, selected = false }: CustomWorkflowNodeProps) {
   const source = data.source || 'local_comfyui';
@@ -284,24 +285,15 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
                         <span>{map.displayName || map.portId}</span>
                         {connected && <span style={{ color: '#8b5cf6' }}>🔗 连线驱动中</span>}
                       </label>
-                      <textarea
-                        rows={3}
+                      <WorkflowTextarea
                         disabled={connected}
                         value={displayVal}
-                        className="nodrag"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onChange={(e) => logic.handleParamChange(map.portId, e.target.value)}
+                        onChange={(val) => logic.handleParamChange(map.portId, val)}
+                        mentionItems={connected ? [{ id: `${map.portId}-upstream`, name: '上游连线输入', type: 'text', token: '@[文本1] ' }] : []}
                         placeholder={connected ? '🔗 连线驱动中...' : '请输入提示词或文本...'}
                         style={{
-                          width: '100%',
-                          background: 'rgba(0,0,0,0.25)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '6px',
                           padding: '6px 10px',
                           color: connected ? '#a3a3a3' : '#fff',
-                          fontSize: '11px',
-                          outline: 'none',
-                          resize: 'none',
                           fontFamily: 'inherit'
                         }}
                       />

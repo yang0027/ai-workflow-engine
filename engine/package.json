@@ -12,7 +12,8 @@
     "@fastify/cors": "^8.5.0",
     "axios": "^1.7.2",
     "fastify": "^4.28.1",
-    "form-data": "^4.0.5"
+    "form-data": "^4.0.5",
+    "minio": "^8.0.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

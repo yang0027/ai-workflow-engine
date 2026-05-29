@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Handle, Position, NodeResizer, useStore } from '@xyflow/react';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { WorkflowTextarea } from '../../WorkflowTextarea';
 import { useModelSelector, getModelsForProvider, Provider } from '../../../hooks/useModelSelector';
 import {
   PromptSourceNodeProps,
@@ -288,28 +289,15 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
             /* 大型文本编辑器 */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '100px' }}>
               <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>编辑剧本/小说原文 (支持复制粘贴):</span>
-              <textarea
+              <WorkflowTextarea
                 id={`textarea-${id}`}
                 value={logic.textVal}
-                className="nodrag custom-scrollbar"
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => logic.handleTextChange(e.target.value)}
+                onChange={logic.handleTextChange}
                 placeholder="在此编写剧本描述，或者通过下方按钮优化与反推提示词..."
                 style={{
-                  width: '100%',
                   height: '200px',
                   minHeight: '120px',
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  outline: 'none',
-                  resize: 'none',
-                  color: '#fff',
-                  fontSize: '12px',
-                  lineHeight: '1.5',
-                  padding: '8px 12px',
-                  fontFamily: 'var(--font-sans)',
-                  overflowY: 'auto'
+                  padding: '8px 12px'
                 }}
               />
             </div>
@@ -505,30 +493,15 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
             </button>
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <textarea
+              <WorkflowTextarea
                 value={logic.textVal}
-                onChange={(e) => logic.handleTextChange(e.target.value)}
-                className="nodrag custom-scrollbar"
-                onMouseDown={(e) => e.stopPropagation()}
+                onChange={logic.handleTextChange}
                 placeholder="在此编写剧本描述，或者通过下方按钮优化与反推提示词..."
                 style={{
-                  width: '100%',
-                  height: '30px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '8px',
-                  outline: 'none',
-                  resize: 'none',
-                  color: '#fff',
-                  fontSize: '11px',
-                  lineHeight: '1.4',
+                  minHeight: '80px',
                   padding: '5px 10px',
-                  fontFamily: 'var(--font-sans)',
-                  overflowY: 'auto',
                   transition: 'all 0.2s'
                 }}
-                onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
               />
             </div>
 

@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/react';
 import { RunningHubService } from '../../services/runninghub.service';
+import { UploadService } from '../../services/upload.service';
+import { WorkflowTextarea } from '../WorkflowTextarea';
 
 interface InputMapping {
   portId: string;
@@ -491,24 +493,15 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
                         <span>{map.displayName || map.portId}</span>
                         {connected && <span style={{ color: '#8b5cf6' }}>🔗 连线驱动中</span>}
                       </label>
-                      <textarea
-                        rows={3}
+                      <WorkflowTextarea
                         disabled={connected}
                         value={displayVal}
-                        className="nodrag"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onChange={(e) => handleParamChange(map.portId, e.target.value)}
+                        onChange={(val) => handleParamChange(map.portId, val)}
+                        mentionItems={connected ? [{ id: `${map.portId}-upstream`, name: '上游连线输入', type: 'text', token: '@[文本1] ' }] : []}
                         placeholder={connected ? '🔗 连线驱动中...' : '请输入提示词或文本...'}
                         style={{
-                          width: '100%',
-                          background: 'rgba(0,0,0,0.25)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '6px',
                           padding: '6px 10px',
                           color: connected ? '#a3a3a3' : '#fff',
-                          fontSize: '11px',
-                          outline: 'none',
-                          resize: 'none',
                           fontFamily: 'inherit'
                         }}
                       />
@@ -573,14 +566,19 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
                                 reader.onload = async (evt) => {
                                   const b64 = evt.target?.result as string;
                                   if (b64) {
-                                    let finalUrl = b64;
-                                    const saveMedia = (window as any).saveMediaToDB;
-                                    if (typeof saveMedia === 'function') {
-                                      const mediaId = `media-asset-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-                                      await saveMedia(mediaId, b64);
-                                      finalUrl = `db://${mediaId}`;
+                                    // 统一走 MinIO 上传，不再写入 db:// 或 IndexedDB
+                                    try {
+                                      const minioUrl = await UploadService.uploadBase64(
+                                        b64,
+                                        `ref-image-${Date.now()}.png`,
+                                        'image'
+                                      );
+                                      handleParamChange(map.portId, minioUrl);
+                                    } catch (err) {
+                                      console.error('[CustomWorkflowNode] MinIO 上传失败:', err);
+                                      // MinIO 失败时直接报错，不降级到 db://
+                                      alert('图片上传失败，请检查 MinIO 存储服务是否正常运行。');
                                     }
-                                    handleParamChange(map.portId, finalUrl);
                                   }
                                 };
                                 reader.readAsDataURL(file);

@@ -2,6 +2,18 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
+import * as Minio from 'minio';
+import path from 'path';
+
+// MinIO 客户端（网关层直接操作，无需经过 engine）
+const minioClient = new Minio.Client({
+  endPoint: 'localhost',
+  port: 19000,
+  useSSL: false,
+  accessKey: 'minio_admin',
+  secretKey: 'MinioSecretPassword123'
+});
+const MINIO_BUCKET = 'workflows';
 
 const fastify = Fastify({ 
   logger: true,
@@ -380,7 +392,7 @@ fastify.post('/api/v1/comfyui/upload', async (request, reply) => {
   }
 });
 
-// ============ 10.3 网关代理：通用的文件上传到 MinIO (支持 JSON Base64 格式) ============
+// ============ 10.3 通用文件上传到 MinIO (JSON Base64 格式) ============
 fastify.post('/api/v1/upload', async (request, reply) => {
   try {
     const response = await fetch(`${ENGINE_URL}/api/v1/engine/upload`, {
@@ -392,6 +404,105 @@ fastify.post('/api/v1/upload', async (request, reply) => {
     return reply.status(response.status).send(data);
   } catch (err: any) {
     return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
+  }
+});
+
+// ============ multipart 二进制上传路由（大文件专用，直接写入 MinIO）============
+fastify.post('/api/v1/upload/multipart', async (request, reply) => {
+  try {
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: 'No file received' });
+    }
+
+    // 读取文件流为 Buffer
+    const chunks: Buffer[] = [];
+    for await (const chunk of data.file) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    const filename = data.filename;
+    const ext = path.extname(filename).toLowerCase();
+
+    // 确定 MIME 类型
+    let mimeType = data.mimetype || 'application/octet-stream';
+    if (ext === '.mp4') mimeType = 'video/mp4';
+    else if (ext === '.webm') mimeType = 'video/webm';
+    else if (ext === '.mov') mimeType = 'video/quicktime';
+    else if (ext === '.avi') mimeType = 'video/x-msvideo';
+    else if (ext === '.mkv') mimeType = 'video/x-matroska';
+    else if (ext === '.mp3') mimeType = 'audio/mpeg';
+    else if (ext === '.wav') mimeType = 'audio/wav';
+    else if (ext === '.ogg') mimeType = 'audio/ogg';
+    else if (ext === '.aac') mimeType = 'audio/aac';
+    else if (ext === '.flac') mimeType = 'audio/flac';
+    else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.gif') mimeType = 'image/gif';
+    else if (ext === '.webp') mimeType = 'image/webp';
+
+    // 生成唯一文件名
+    const uniqueFilename = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 8)}${ext}`;
+
+    // 确保 bucket 存在
+    const bucketExists = await minioClient.bucketExists(MINIO_BUCKET);
+    if (!bucketExists) {
+      await minioClient.makeBucket(MINIO_BUCKET, 'us-east-1');
+      const policy = JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [{ Effect: 'Allow', Principal: '*', Action: ['s3:GetObject'], Resource: [`arn:aws:s3:::${MINIO_BUCKET}/*`] }]
+      });
+      await minioClient.setBucketPolicy(MINIO_BUCKET, policy);
+    }
+
+    // 直接写入 MinIO
+    await minioClient.putObject(MINIO_BUCKET, uniqueFilename, buffer, buffer.length, {
+      'Content-Type': mimeType
+    });
+
+    // 返回网关代理 URL（而非直接 MinIO URL），避免跨域 Range 请求导致大视频只有声音没画面
+    const url = `http://localhost:3000/api/v1/media/${MINIO_BUCKET}/${uniqueFilename}`;
+    fastify.log.info(`[Gateway Multipart] 上传成功，代理 URL: ${url}`);
+    return reply.send({ success: true, url, filename: uniqueFilename });
+  } catch (err: any) {
+    fastify.log.error(`[Gateway Multipart] 上传失败: ${err.message}`);
+    return reply.status(500).send({ error: `Multipart upload failed: ${err.message}` });
+  }
+});
+
+// ============ MinIO 媒体代理路由（支持 Range 请求，解决大文件视频跨域黑屏）============
+// 将 http://localhost:19000/bucket/file 代理为 http://localhost:3000/api/v1/media/bucket/file
+fastify.get('/api/v1/media/:bucket/:filename', async (request, reply) => {
+  const { bucket, filename } = request.params as { bucket: string; filename: string };
+  try {
+    // 透传 Range 请求头（浏览器大文件分片加载必须）
+    const rangeHeader = request.headers['range'];
+    const headers: Record<string, string> = {};
+    if (rangeHeader) headers['Range'] = rangeHeader;
+
+    const minioRes = await fetch(`http://localhost:19000/${bucket}/${filename}`, { headers });
+
+    // 透传关键响应头
+    const contentType = minioRes.headers.get('content-type') || 'application/octet-stream';
+    const contentLength = minioRes.headers.get('content-length');
+    const contentRange = minioRes.headers.get('content-range');
+    const acceptRanges = minioRes.headers.get('accept-ranges');
+
+    reply.header('Content-Type', contentType);
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+    if (contentLength) reply.header('Content-Length', contentLength);
+    if (contentRange) reply.header('Content-Range', contentRange);
+    if (acceptRanges) reply.header('Accept-Ranges', acceptRanges);
+    else reply.header('Accept-Ranges', 'bytes');
+    reply.header('Cache-Control', 'public, max-age=3600');
+
+    // 返回对应状态码（206 Partial Content 或 200）
+    const status = minioRes.status;
+    const body = await minioRes.arrayBuffer();
+    return reply.status(status).send(Buffer.from(body));
+  } catch (err: any) {
+    fastify.log.error(`[Media Proxy] 代理失败 ${bucket}/${filename}: ${err.message}`);
+    return reply.status(502).send({ error: `Media proxy failed: ${err.message}` });
   }
 });
 

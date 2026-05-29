@@ -1,6 +1,7 @@
 import React from 'react';
 import { MODEL_KEYWORDS, getModelsForProvider } from '../../../hooks/useModelSelector';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { WorkflowTextarea } from '../../WorkflowTextarea';
 
 // 性能特优且酷炫的 inline badge 解析器：文本 -> 富文本 HTML (绿色高亮带微缩图)
 const convertPromptToHTML = (text: string, connectedImages: any[]) => {
@@ -140,13 +141,13 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
     };
   }, [activePopover, setActivePopover]);
 
-  // 提示词文本框高度根据字数自适应变大 (最小 42px，最大 160px，写满 6 行后超出滚动)
+  // 提示词文本框高度根据字数自适应变大 (最小 80px，最大 160px，写满 4 行后超出滚动)
   React.useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
       const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 42), 160)}px`;
+      textarea.style.height = `${Math.min(Math.max(scrollHeight, 80), 160)}px`;
     }
   }, [currentPrompt]);
 
@@ -446,37 +447,29 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
           {/* Prompt 提示词框 & 微型缩略图引用 Tag 渲染 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {/* 极简经典极窄输入框 - 完美还原原生输入稳定性与顺畅打字体验 */}
-            <textarea
+            {/* 统一工作流文本框：右键原生菜单、@ 引用上游资产、MinIO/URL 文本直通 */}
+            <WorkflowTextarea
               ref={textareaRef}
               value={currentPrompt}
               disabled={isPromptConnected}
-              className="nodrag custom-scrollbar"
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => handlePromptChange(e.target.value)}
+              onChange={handlePromptChange}
+              mentionItems={connectedImages.map((img, idx) => {
+                const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
+                return {
+                  id: img.nodeId,
+                  name: img.nodeName,
+                  type: img.type,
+                  url: img.url,
+                  token: `@[${label}${idx + 1}] `
+                };
+              })}
               placeholder={isPromptConnected ? "" : "描述你想生成的内容，使用 @ 引用上游已连线的图像..."}
               style={{
-                width: '100%',
-                height: 'auto',
-                minHeight: '42px',
+                minHeight: '80px',
                 maxHeight: '160px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '8px',
-                outline: 'none',
-                resize: 'none',
                 color: isPromptConnected ? 'rgba(255, 255, 255, 0.45)' : '#fff',
-                fontSize: '11.5px',
-                lineHeight: '1.4',
-                padding: '10px 10px',
-                fontFamily: 'var(--font-sans)',
-                overflowY: 'auto',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
                 transition: 'border-color 0.2s'
               }}
-              onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)'}
-              onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
             />
 
             {/* @ 选中的图像在文本框正下方渲染极其惊艳的“微型缩略图 Tag”组 (第 5 点) */}
@@ -511,60 +504,6 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
               })}
             </div>
 
-            {/* @ Mention 弹出下拉单 */}
-            {showMentionList && connectedImages.length > 0 && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: 0,
-                  background: 'rgba(11, 15, 26, 0.98)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  boxShadow: '0 10px 20px rgba(0,0,0,0.5)',
-                  width: '200px',
-                  padding: '4px',
-                  zIndex: 3000,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px'
-                }}
-              >
-                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', padding: '4px 6px', fontWeight: 'bold' }}>
-                  🔗 引用上游已连线图像：
-                </div>
-                {connectedImages.map((img, idx) => {
-                  const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
-                  return (
-                    <div
-                      key={img.nodeId}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleSelectMention(idx, img.nodeName);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 8px',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '10px',
-                        color: '#fff',
-                        background: 'transparent',
-                        transition: 'all 0.15s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <ResolvedMedia url={img.url} type={img.type} style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
-                      <span>{img.nodeName} ({label}{idx + 1})</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* 生成按钮 */}

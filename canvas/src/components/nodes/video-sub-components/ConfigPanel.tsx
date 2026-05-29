@@ -1,5 +1,6 @@
 import React from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { WorkflowTextarea } from '../../WorkflowTextarea';
 import { useVideoNodeLogic } from './useVideoNodeLogic';
 import { getModelsForProvider } from '../../../hooks/useModelSelector';
 
@@ -45,13 +46,13 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
   const currentPrompt = isPromptConnected ? connectedPrompt : (data.inputs?.prompt || '');
 
-  // 提示词文本框高度根据字数自适应变大 (最小 42px，最大 160px，写满 6 行后超出滚动)
+  // 提示词文本框高度根据字数自适应变大 (最小 80px，最大 160px，写满 4 行后超出滚动)
   React.useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
       const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 42), 160)}px`;
+      textarea.style.height = `${Math.min(Math.max(scrollHeight, 80), 160)}px`;
     }
   }, [currentPrompt, textareaRef]);
 
@@ -243,118 +244,35 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
 
         {/* 极窄输入提示词文本框 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-          <textarea
+          <WorkflowTextarea
             ref={textareaRef}
             id={`textarea-${id}`}
             value={currentPrompt}
             disabled={isPromptConnected}
-            className="nodrag custom-scrollbar"
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              const val = e.target.value;
-              handleInputChange('prompt', val);
-              const cursor = e.target.selectionStart;
-              const textBefore = val.substring(0, cursor);
-              const lastAt = textBefore.lastIndexOf('@');
-              if (lastAt !== -1 && lastAt >= textBefore.length - 2) {
-                setShowMentionList(true);
-              } else {
-                setShowMentionList(false);
-              }
-            }}
+            onChange={(val) => handleInputChange('prompt', val)}
+            mentionItems={allConnectedAssets.map((asset, idx) => {
+              const label = asset.type === 'image' ? '图' : asset.type === 'video' ? '视频' : '音频';
+              return {
+                id: asset.nodeId,
+                name: asset.name,
+                type: asset.type,
+                url: asset.url,
+                token: `@[${label}${idx + 1}] `
+              };
+            })}
             placeholder={
               isPromptConnected
                 ? '🔗 已通过连线装载并接收上游动作提示词描述...'
                 : '在此编写动作提示词 Prompt (支持输入 @ 快捷绑定参考图，如 @图1)...'
             }
             style={{
-              width: '100%',
-              height: 'auto',
-              minHeight: '42px',
+              minHeight: '80px',
               maxHeight: '160px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              outline: 'none',
-              resize: 'none',
               color: isPromptConnected ? 'rgba(255, 255, 255, 0.45)' : '#fff',
-              fontSize: '11px',
-              lineHeight: '1.4',
-              padding: '10px 10px',
-              fontFamily: 'var(--font-sans)',
-              overflowY: 'auto',
               transition: 'border-color 0.2s'
-            }}
-            onFocus={(e) => {
-              if (!isPromptConnected) e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)';
-            }}
-            onBlur={(e) => {
-              if (!isPromptConnected) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
             }}
           />
 
-          {/* @ Mention 弹出下拉单 */}
-          {showMentionList && allConnectedAssets.length > 0 && (
-            <div
-              className="nodrag"
-              style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: 0,
-                background: 'rgba(11, 15, 26, 0.98)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px',
-                boxShadow: '0 10px 20px rgba(0,0,0,0.5)',
-                width: '220px',
-                padding: '4px',
-                zIndex: 3000,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                marginBottom: '4px'
-              }}
-            >
-              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', padding: '4px 6px', fontWeight: 'bold' }}>
-                🔗 引用上游已装载多媒体：
-              </div>
-              {allConnectedAssets.map((asset, idx) => {
-                const typeLabel = asset.type === 'image' ? '图' : asset.type === 'video' ? '视频' : '音频';
-                return (
-                  <div
-                    key={asset.nodeId}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSelectMention(idx, asset.name, asset.type);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '10px',
-                      color: '#fff',
-                      background: 'transparent',
-                      transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.25)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    {asset.type === 'audio' ? (
-                      <span style={{ fontSize: '11px' }}>🎵</span>
-                    ) : (
-                      <ResolvedMedia url={asset.url} type={asset.type === 'video' ? 'video' : 'image'} style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
-                    )}
-                    <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                      {asset.name} ({typeLabel}{idx + 1})
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         {/* 开始处理生成按钮 */}
@@ -1149,24 +1067,25 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
                           </div>
 
                           {isText ? (
-                            <textarea
+                            <WorkflowTextarea
                               disabled={isPromptConnected}
                               value={isPromptConnected ? connectedPrompt : currentVal}
-                              className="nodrag"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onChange={(e) => handleInputChange(inputKey, e.target.value)}
+                              onChange={(val) => handleInputChange(inputKey, val)}
+                              mentionItems={allConnectedAssets.map((asset, idx) => {
+                                const label = asset.type === 'image' ? '图' : asset.type === 'video' ? '视频' : '音频';
+                                return {
+                                  id: `${inputKey}-${asset.nodeId}`,
+                                  name: asset.name,
+                                  type: asset.type,
+                                  url: asset.url,
+                                  token: `@[${label}${idx + 1}] `
+                                };
+                              })}
                               style={{
-                                width: '100%',
-                                height: '38px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                borderRadius: '4px',
+                                minHeight: '80px',
                                 padding: '4px 6px',
                                 color: isPromptConnected ? 'rgba(255, 255, 255, 0.45)' : '#fff',
-                                fontSize: '9.5px',
-                                resize: 'none',
-                                outline: 'none',
-                                lineHeight: '1.3'
+                                borderRadius: '8px'
                               }}
                             />
                           ) : isImg ? (

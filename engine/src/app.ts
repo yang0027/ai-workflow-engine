@@ -15,6 +15,18 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import * as Minio from 'minio';
+
+// MinIO 客户端（单例）
+const minioClient = new Minio.Client({
+  endPoint: 'localhost',
+  port: 19000,
+  useSSL: false,
+  accessKey: 'minio_admin',
+  secretKey: 'MinioSecretPassword123'
+});
+
+const MINIO_BUCKET = 'workflows';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -119,9 +131,16 @@ fastify.get('/outputs/:filename', async (request, reply) => {
     const ext = path.extname(filename).toLowerCase();
     let mime = 'image/png';
     if (ext === '.mp4') mime = 'video/mp4';
+    else if (ext === '.webm') mime = 'video/webm';
+    else if (ext === '.mov') mime = 'video/quicktime';
+    else if (ext === '.avi') mime = 'video/x-msvideo';
+    else if (ext === '.mkv') mime = 'video/x-matroska';
     else if (ext === '.mp3') mime = 'audio/mpeg';
     else if (ext === '.mpeg' || ext === '.mpg') mime = 'video/mpeg';
     else if (ext === '.wav') mime = 'audio/wav';
+    else if (ext === '.ogg') mime = 'audio/ogg';
+    else if (ext === '.flac') mime = 'audio/flac';
+    else if (ext === '.aac') mime = 'audio/aac';
     else if (ext === '.gif') mime = 'image/gif';
     else if (ext === '.webp') mime = 'image/webp';
     else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
@@ -164,29 +183,46 @@ fastify.post('/api/v1/engine/upload', async (request, reply) => {
     let mimeType = 'image/png';
     const lowerExt = ext.toLowerCase();
     
-    // 物理防黑屏：增加主流视频及音频格式的深度匹配（包含大小写）
     if (lowerExt === '.jpg' || lowerExt === '.jpeg') mimeType = 'image/jpeg';
     else if (lowerExt === '.gif') mimeType = 'image/gif';
     else if (lowerExt === '.webp') mimeType = 'image/webp';
-    else if (lowerExt === '.mp4' || lowerExt === '.webm' || lowerExt === '.mov' || lowerExt === '.avi' || lowerExt === '.mkv') mimeType = 'video/mp4';
+    else if (lowerExt === '.mp4') mimeType = 'video/mp4';
+    else if (lowerExt === '.webm') mimeType = 'video/webm';
+    else if (lowerExt === '.mov') mimeType = 'video/quicktime';
+    else if (lowerExt === '.avi') mimeType = 'video/x-msvideo';
+    else if (lowerExt === '.mkv') mimeType = 'video/x-matroska';
     else if (lowerExt === '.mp3') mimeType = 'audio/mpeg';
     else if (lowerExt === '.wav') mimeType = 'audio/wav';
     else if (lowerExt === '.flac') mimeType = 'audio/flac';
     else if (lowerExt === '.ogg') mimeType = 'audio/ogg';
+    else if (lowerExt === '.aac') mimeType = 'audio/aac';
 
-    // 3. 上传到本地 MinIO 的 workflows 桶中
+    // 3. 用 MinIO SDK 上传（带认证），确保返回正确的公开 URL
     let uploadUrl = '';
     try {
-      console.log(`[Engine Upload] 📦 正在同步上传到 MinIO: ${uniqueFilename}...`);
-      // 超时时间由 8 秒大幅提升至 60 秒，确保大文件（如 25.5MB 视频）不超时断开
-      await axios.put(`http://localhost:19000/workflows/${uniqueFilename}`, buffer, {
-        headers: { 'Content-Type': mimeType },
-        timeout: 60000
+      console.log(`[Engine Upload] 📦 正在通过 MinIO SDK 上传: ${uniqueFilename}...`);
+
+      // 确保 bucket 存在
+      const bucketExists = await minioClient.bucketExists(MINIO_BUCKET);
+      if (!bucketExists) {
+        await minioClient.makeBucket(MINIO_BUCKET, 'us-east-1');
+        // 设置公开只读策略
+        const policy = JSON.stringify({
+          Version: '2012-10-17',
+          Statement: [{ Effect: 'Allow', Principal: '*', Action: ['s3:GetObject'], Resource: [`arn:aws:s3:::${MINIO_BUCKET}/*`] }]
+        });
+        await minioClient.setBucketPolicy(MINIO_BUCKET, policy);
+        console.log(`[Engine Upload] 🪣 Bucket "${MINIO_BUCKET}" 创建并设置公开只读策略`);
+      }
+
+      await minioClient.putObject(MINIO_BUCKET, uniqueFilename, buffer, buffer.length, {
+        'Content-Type': mimeType
       });
-      uploadUrl = `http://localhost:19000/workflows/${uniqueFilename}`;
-      console.log(`[Engine Upload] 🎉 MinIO 上传成功: ${uploadUrl}`);
+
+      uploadUrl = `http://localhost:3000/api/v1/media/${MINIO_BUCKET}/${uniqueFilename}`;
+      console.log(`[Engine Upload] 🎉 MinIO SDK 上传成功，代理 URL: ${uploadUrl}`);
     } catch (minioErr: any) {
-      console.warn(`[Engine Upload] ⚠️ MinIO 物理同步失败 (已自动启用降级防灾本地链路): ${minioErr.message}`);
+      console.warn(`[Engine Upload] ⚠️ MinIO 上传失败，降级到本地文件服务: ${minioErr.message}`);
       // 灾备降级，使用本地核心服务端口 4000 接管
       uploadUrl = `http://localhost:4000/outputs/${uniqueFilename}`;
     }
@@ -471,15 +507,67 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
           console.log(`[Engine] Converted b64_json to URL: ${fileUrl}`);
           return { url: fileUrl };
         }
+        // 异步 provider（如 gpt-image-2）返回 task_id → 自动轮询拿结果
+        if (item.task_id) {
+          console.log(`[Engine] Async task detected: ${item.task_id}, polling...`);
+          const result = await pollAsyncTask(cleanUrl, config.apiKey, item.task_id);
+          return result;
+        }
         return item;
       }));
       return { data: processedData };
+    }
+
+    // 异步 task_id 散落在根层级（如 provider 01 格式）
+    if (response.data?.task_id) {
+      console.log(`[Engine] Async task at root: ${response.data.task_id}, polling...`);
+      const result = await pollAsyncTask(cleanUrl, config.apiKey, response.data.task_id);
+      return { data: [result] };
     }
 
     return response.data;
   } catch (err: any) {
     fastify.log.error(err);
     return reply.status(500).send({ error: err.message });
+  }
+
+  // === 功能分块：异步任务轮询 ===
+  // 输入：provider baseUrl, apiKey, task_id
+  // 输出：{ url: string } 或抛出错误
+  async function pollAsyncTask(baseUrl: string, apiKey: string, taskId: string): Promise<{ url: string }> {
+    const pollUrl = `${baseUrl}/images/generations/${taskId}`;
+    const maxAttempts = 30;
+    const intervalMs = 3000;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+
+      const resp = await axios.get(pollUrl, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 10000
+      });
+
+      const task = resp.data?.data?.[0];
+      if (!task) {
+        throw new Error(`Task ${taskId} 响应格式异常: ${JSON.stringify(resp.data)}`);
+      }
+
+      const status = task.status || task.output?.status;
+      console.log(`[Engine] Poll ${taskId} attempt ${i + 1}: status=${status}`);
+
+      if (status === 'completed' || status === 'succeeded') {
+        const imgUrl = task.url || task.output?.url || task.generation?.url;
+        if (!imgUrl) throw new Error(`Task ${taskId} completed 但无 url 字段`);
+        return { url: imgUrl };
+      }
+
+      if (status === 'failed' || status === 'error') {
+        const errMsg = task.error?.message || JSON.stringify(task.error);
+        throw new Error(`Task ${taskId} failed: ${errMsg}`);
+      }
+    }
+
+    throw new Error(`Task ${taskId} 轮询超时（${maxAttempts} 次）`);
   }
 });
 

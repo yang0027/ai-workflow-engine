@@ -16,6 +16,7 @@ import {
   filterModelsByCategory,
   type ModelCategory 
 } from './SettingsModal/modelCategories';
+import { WorkflowTextarea } from './WorkflowTextarea';
 
 interface ProviderConfig {
   enabled: boolean;
@@ -2456,22 +2457,16 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                           </div>
                         </div>
 
-                        <textarea
+                        <WorkflowTextarea
                           value={editorJsonText}
-                          onChange={(e) => setEditorJsonText(e.target.value)}
+                          onChange={setEditorJsonText}
                           placeholder='{"3": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 20...}}}'
                           style={{
-                            width: '100%',
                             height: '110px',
-                            background: 'rgba(5, 7, 12, 0.4)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            borderRadius: '8px',
+                            background: 'rgba(0,0,0,0.3)',
                             padding: '10px 14px',
                             color: 'hsl(140, 75%, 65%)',
-                            fontSize: '11px',
                             fontFamily: 'Consolas, Monaco, monospace',
-                            outline: 'none',
-                            resize: 'none',
                             lineHeight: '1.5'
                           }}
                         />

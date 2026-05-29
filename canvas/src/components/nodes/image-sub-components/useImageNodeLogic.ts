@@ -118,7 +118,7 @@ export function useImageNodeLogic({
       if (!val || typeof val !== 'string') return;
 
       const isResourceUrl = 
-        val.startsWith('data:') || val.startsWith('db://') || val.startsWith('http') ||
+        val.startsWith('data:') || val.startsWith('http') ||
         val.endsWith('.mp3') || val.endsWith('.wav') || val.endsWith('.mp4') || val.endsWith('.png') || val.endsWith('.jpg');
 
       if (!isResourceUrl && srcNode.type === 'prompt-source') {
@@ -408,17 +408,7 @@ export function useImageNodeLogic({
         if (typeof reader.result === 'string') {
           const base64 = reader.result;
           
-          // 极致安全虚拟化中转：将超大 Base64 静默存入 IndexedDB 本地静态库，只向 React Nodes 传递超轻量级的 db:// 协议 ID！
-          // 这能将 React Flow 节点比对负累与 LocalStorage 爆容量溢出黑屏几率直接降为 0！
-          const saveMedia = (window as any).saveMediaToDB;
-          let finalUrl = base64;
-          if (typeof saveMedia === 'function') {
-            const mediaId = `media-asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            await saveMedia(mediaId, base64);
-            finalUrl = `db://${mediaId}`;
-          }
-
-          handleAddRefImagePhysicalNode(finalUrl, file.name, file.type);
+          handleAddRefImagePhysicalNode(base64, file.name, file.type);
         }
       };
       reader.readAsDataURL(file);
@@ -502,23 +492,6 @@ export function useImageNodeLogic({
 
   // 12. 图像生成逻辑
   const handleGenerateImage = async () => {
-    // 自动异步解析 db:// 引用为 Base64 真实数据
-    const resolveDbUrl = async (url: string): Promise<string> => {
-      if (typeof url === 'string' && url.startsWith('db://')) {
-        const mediaId = url.replace('db://', '');
-        const getMedia = (window as any).getMediaFromDB;
-        if (typeof getMedia === 'function') {
-          try {
-            const base64 = await getMedia(mediaId);
-            if (base64) return base64;
-          } catch (err) {
-            console.warn(`[useImageNodeLogic] Failed to resolve db://:`, err);
-          }
-        }
-      }
-      return url;
-    };
-
     let processedPrompt = currentPrompt;
     connectedImages.forEach((img, idx) => {
       const label = img.type === 'image' ? '图' : img.type === 'video' ? '视频' : '音频';
@@ -533,7 +506,7 @@ export function useImageNodeLogic({
     setGenerating(true);
 
     try {
-      const resolvedRefImages = await Promise.all(refImages.map(item => resolveDbUrl(item.url)));
+      const resolvedRefImages = refImages.map(item => item.url);
       const resolvedFaceRef = resolvedRefImages[0] || '';
 
       for (let i = 0; i < batchSize; i++) {

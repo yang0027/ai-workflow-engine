@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
+import { WorkflowTextarea } from '../../WorkflowTextarea';
 import { getModelsForProvider } from '../../../hooks/useModelSelector';
 
 export interface ConfigPanelProps {
@@ -301,12 +302,11 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
         {/* 极窄输入文本域 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <textarea
+          <WorkflowTextarea
             value={currentText}
             disabled={isTextConnected}
-            className="nodrag custom-scrollbar"
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => handleInputChange('text', e.target.value)}
+            onChange={(val) => handleInputChange('text', val)}
+            mentionItems={isTextConnected ? [{ id: `${id}-upstream-text`, name: '上游台词文本', type: 'text', token: '@[文本1] ' }] : []}
             placeholder={
               isTextConnected
                 ? '🔗 已通过连线驱动装载配音台词描述...'
@@ -315,26 +315,10 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                 : '在此编写配音旁白台词，或者连线文本节点...'
             }
             style={{
-              width: '100%',
-              height: '30px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              outline: 'none',
-              resize: 'none',
+              minHeight: '80px',
               color: isTextConnected ? 'rgba(255, 255, 255, 0.45)' : '#fff',
-              fontSize: '11px',
-              lineHeight: '1.4',
               padding: '5px 10px',
-              fontFamily: 'var(--font-sans)',
-              overflowY: 'auto',
               transition: 'all 0.2s'
-            }}
-            onFocus={(e) => {
-              if (!isTextConnected) e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)';
-            }}
-            onBlur={(e) => {
-              if (!isTextConnected) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
             }}
           />
         </div>
@@ -946,24 +930,16 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
                           </div>
 
                           {isText ? (
-                            <textarea
+                            <WorkflowTextarea
                               disabled={isTextConnected}
                               value={isTextConnected ? currentText : currentVal}
-                              className="nodrag"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onChange={(e) => handleInputChange(inputKey, e.target.value)}
+                              onChange={(val) => handleInputChange(inputKey, val)}
+                              mentionItems={isTextConnected ? [{ id: `${inputKey}-upstream-text`, name: '上游台词文本', type: 'text', token: '@[文本1] ' }] : []}
                               style={{
-                                width: '100%',
-                                height: '38px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                borderRadius: '4px',
+                                minHeight: '80px',
                                 padding: '4px 6px',
                                 color: isTextConnected ? 'rgba(255,255,255,0.45)' : '#fff',
-                                fontSize: '9.5px',
-                                resize: 'none',
-                                outline: 'none',
-                                lineHeight: '1.3'
+                                borderRadius: '8px'
                               }}
                             />
                           ) : isAudio ? (

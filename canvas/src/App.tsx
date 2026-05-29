@@ -45,6 +45,7 @@ import { RunningHubService } from './services/runninghub.service';
 import { ResolvedMedia } from './components/ResolvedMedia';
 import { FloatingActionMenu } from './components/FloatingActionMenu';
 import { SelfTemplateService } from './services/self-template.service';
+import { WorkflowTextarea } from './components/WorkflowTextarea';
 
 
 // 自定义带删除按钮的 Edge 组件
@@ -1208,6 +1209,8 @@ function WorkflowCanvas() {
   // 新增二开交互状态
   const [paneContextMenuPos, setPaneContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [textContextMenu, setTextContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const textContextTargetRef = React.useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
   const [copiedNode, setCopiedNode] = useState<any>(null);
 
   // 保存资产弹窗状态
@@ -2040,23 +2043,85 @@ function WorkflowCanvas() {
     }, 3000);
   };
 
+  // 文本框右键菜单：画布接管了原生 contextmenu，这里补齐复制/粘贴/剪切能力
+  const openTextContextMenu = useCallback((event: any) => {
+    const target = event.target as HTMLElement | null;
+    const textTarget = target?.closest?.('textarea, input') as HTMLTextAreaElement | HTMLInputElement | null;
+    if (!textTarget) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    textContextTargetRef.current = textTarget;
+    setPaneContextMenuPos(null);
+    setNodeContextMenu(null);
+    setTextContextMenu({ x: event.clientX, y: event.clientY });
+    return true;
+  }, []);
+
+  const updateTextTargetValue = (target: HTMLTextAreaElement | HTMLInputElement, nextValue: string, nextCursor: number) => {
+    target.value = nextValue;
+    target.focus();
+    target.setSelectionRange(nextCursor, nextCursor);
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  const handleTextContextMenuAction = async (actionId: 'copy' | 'cut' | 'paste' | 'select_all') => {
+    const target = textContextTargetRef.current;
+    if (!target) return;
+
+    const start = target.selectionStart ?? 0;
+    const end = target.selectionEnd ?? 0;
+    const selectedText = target.value.slice(start, end);
+    const selectedOrAll = selectedText || target.value;
+
+    if (actionId === 'select_all') {
+      target.focus();
+      target.select();
+      return;
+    }
+
+    if (actionId === 'copy') {
+      if (selectedOrAll) await navigator.clipboard.writeText(selectedOrAll);
+      return;
+    }
+
+    if (actionId === 'cut') {
+      if (selectedOrAll) await navigator.clipboard.writeText(selectedOrAll);
+      const cutStart = selectedText ? start : 0;
+      const cutEnd = selectedText ? end : target.value.length;
+      const nextValue = target.value.slice(0, cutStart) + target.value.slice(cutEnd);
+      updateTextTargetValue(target, nextValue, cutStart);
+      return;
+    }
+
+    if (actionId === 'paste') {
+      const clipText = await navigator.clipboard.readText();
+      const nextValue = target.value.slice(0, start) + clipText + target.value.slice(end);
+      updateTextTargetValue(target, nextValue, start + clipText.length);
+    }
+  };
+
   // pane and node right-click events
   const onPaneContextMenu = useCallback(
     (event: any) => {
+      if (openTextContextMenu(event)) return;
       event.preventDefault();
+      setTextContextMenu(null);
       setNodeContextMenu(null);
       setPaneContextMenuPos({ x: event.clientX, y: event.clientY });
     },
-    []
+    [openTextContextMenu]
   );
 
   const onNodeContextMenu = useCallback(
     (event: any, node: Node) => {
+      if (openTextContextMenu(event)) return;
       event.preventDefault();
+      setTextContextMenu(null);
       setPaneContextMenuPos(null);
       setNodeContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
     },
-    []
+    [openTextContextMenu]
   );
 
   const onPaneDoubleClick = useCallback(
@@ -4591,6 +4656,7 @@ function WorkflowCanvas() {
             setHoveredCategory(null);
             setNodeContextMenu(null);
             setPaneContextMenuPos(null);
+            setTextContextMenu(null);
             setShowConnectMenu(false);
           }}
           fitView
@@ -4703,20 +4769,15 @@ function WorkflowCanvas() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
                   <label style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>模板描述</label>
-                  <textarea 
+                  <WorkflowTextarea
                     value={selfSaveDesc}
-                    onChange={(e) => setSelfSaveDesc(e.target.value)}
+                    onChange={setSelfSaveDesc}
                     placeholder="简要描述此模板的作用和主节点配置..."
-                    rows={3}
                     style={{
-                      background: 'rgba(255,255,255,0.05)',
+                      background: 'rgba(0,0,0,0.3)',
                       border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '8px',
                       padding: '8px 12px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      outline: 'none',
-                      resize: 'none'
+                      color: '#fff'
                     }}
                   />
                 </div>
@@ -5602,23 +5663,14 @@ function WorkflowCanvas() {
                     📁 本地上传
                   </button>
                 </div>
-                <textarea
+                <WorkflowTextarea
                   value={drawerComfyJson}
-                  className="nodrag"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onChange={(e) => setDrawerComfyJson(e.target.value)}
+                  onChange={setDrawerComfyJson}
                   placeholder="在此粘贴导出的 ComfyUI API 格式 JSON 拓扑代码..."
                   style={{
-                    width: '100%',
                     height: '140px',
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: '8px',
                     padding: '10px',
-                    fontSize: '11px',
                     color: '#a855f7',
-                    outline: 'none',
-                    resize: 'none',
                     fontFamily: 'monospace',
                     lineHeight: '1.4'
                   }}
@@ -6021,6 +6073,79 @@ function WorkflowCanvas() {
           onClose={() => setSnapshotCanvasId(null)}
           onRollback={handleSnapshotRollback}
         />
+      )}
+
+      {/* 文本框右键菜单 (Textarea Context Menu Overlay) */}
+      {textContextMenu && (
+        <div
+          className="glass-panel nodrag"
+          style={{
+            position: 'fixed',
+            top: textContextMenu.y,
+            left: textContextMenu.x,
+            zIndex: 10020,
+            borderRadius: '12px',
+            background: 'rgba(11, 15, 25, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 15px rgba(168, 85, 247, 0.25)',
+            padding: '6px',
+            width: '150px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            animation: 'fadeIn 0.15s ease-out'
+          }}
+        >
+          <div
+            style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              zIndex: -1,
+              background: 'transparent'
+            }}
+            onClick={() => setTextContextMenu(null)}
+          />
+
+          {[
+            { id: 'copy', label: '📋 复制' },
+            { id: 'cut', label: '✂️ 剪切' },
+            { id: 'paste', label: '📥 粘贴' },
+            { id: 'select_all', label: '🔲 全选' }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                void handleTextContextMenuAction(item.id as 'copy' | 'cut' | 'paste' | 'select_all');
+                setTextContextMenu(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'transparent',
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 500,
+                textAlign: 'left',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)';
+                e.currentTarget.style.transform = 'translateX(4px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* 节点右键菜单 (Node Context Menu Overlay) */}
@@ -6436,24 +6561,13 @@ function WorkflowCanvas() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px', fontWeight: 600 }}>描述说明</label>
-                <textarea
+                <WorkflowTextarea
                   value={saveAssetDesc}
-                  className="nodrag"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onChange={(e) => setSaveAssetDesc(e.target.value)}
+                  onChange={setSaveAssetDesc}
                   style={{
-                    width: '100%',
-                    height: '60px',
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: '8px',
+                    height: '80px',
                     padding: '8px 12px',
-                    color: '#fff',
-                    fontSize: '12px',
-                    outline: 'none',
-                    resize: 'none',
-                    fontFamily: 'var(--font-sans)',
-                    lineHeight: '1.5'
+                    color: '#fff'
                   }}
                   placeholder="可选描述资产的独特特点或工作流背景参数..."
                 />
@@ -6960,22 +7074,17 @@ function WorkflowCanvas() {
                       </button>
                     </div>
 
-                    <textarea
+                    <WorkflowTextarea
                       value={lightboxPrompt}
-                      onChange={(e) => setLightboxPrompt(e.target.value)}
+                      onChange={setLightboxPrompt}
                       placeholder="输入精调提示词，免退灯箱原地重新流转生成..."
                       style={{
-                        width: '100%',
                         flex: 1,
                         minHeight: '120px',
                         background: 'rgba(0, 0, 0, 0.45)',
                         border: '1px solid rgba(255, 255, 255, 0.08)',
                         borderRadius: '10px',
                         padding: '12px',
-                        color: '#fff',
-                        fontSize: '12px',
-                        resize: 'none',
-                        outline: 'none',
                         fontFamily: 'inherit',
                         lineHeight: '1.4'
                       }}

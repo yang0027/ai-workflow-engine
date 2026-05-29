@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/react';
 import { useModelSelector } from '../../hooks/useModelSelector';
+import { WorkflowTextarea } from '../WorkflowTextarea';
 
 interface Skill {
   id: string;
@@ -400,25 +401,18 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
               </span>
             )}
           </div>
-          <textarea
+          <WorkflowTextarea
             value={currentPrompt}
             disabled={isPromptConnected}
-            className="nodrag"
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => handleInputChange('prompt', e.target.value)}
+            onChange={(val) => handleInputChange('prompt', val)}
+            mentionItems={connectedPrompt ? [{ id: `${id}-upstream-prompt`, name: '上游文本输入', type: 'text', token: '@[文本1] ' }] : []}
             placeholder="请输入剧本故事文本，或者将上游'故事剧本参数输入源'节点连接至左侧接口..."
             style={{
-              width: '100%',
               height: '80px',
-              background: isPromptConnected ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.2)',
+              background: isPromptConnected ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.3)',
               border: isPromptConnected ? '1px dashed rgba(168, 85, 247, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '6px',
               padding: '6px 10px',
-              color: isPromptConnected ? '#a3a3a3' : '#fff',
-              fontSize: '11px',
-              resize: 'none',
-              outline: 'none',
-              lineHeight: '1.4'
+              color: isPromptConnected ? '#a3a3a3' : '#fff'
             }}
           />
         </div>
@@ -571,24 +565,14 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
                 </button>
               </div>
 
-              <textarea
+              <WorkflowTextarea
                 value={loopPromptsText}
-                className="nodrag"
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => handleInputChange('loopPromptsText', e.target.value)}
+                onChange={(val) => handleInputChange('loopPromptsText', val)}
                 placeholder="请输入分镜列表，每行一个分镜提示词..."
                 style={{
-                  width: '100%',
-                  height: '60px',
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '4px',
+                  height: '80px',
                   padding: '4px 8px',
-                  color: '#fff',
-                  fontSize: '10px',
-                  resize: 'none',
-                  outline: 'none',
-                  lineHeight: '1.4'
+                  border: '1px solid rgba(255,255,255,0.06)'
                 }}
               />
 

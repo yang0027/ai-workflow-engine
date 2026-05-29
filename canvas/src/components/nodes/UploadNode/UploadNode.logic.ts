@@ -185,11 +185,9 @@ export function useUploadNodeLogic({
       detectedType = 'audio';
     }
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result !== 'string') return;
-      const base64 = reader.result;
-      const finalUrl = await UploadService.uploadBase64(base64, file.name, detectedType);
+    try {
+      // 直接用 File 对象上传（FormData 二进制），不转 base64，避免大文件 Failed to fetch
+      const finalUrl = await UploadService.uploadFile(file, detectedType);
 
       const addAsset = (window as any).addUploadedAsset;
       if (typeof addAsset === 'function') {
@@ -204,9 +202,12 @@ export function useUploadNodeLogic({
           outputs: { ...(n.data?.outputs as any), output: finalUrl, fileType: detectedType },
         }
       } : n));
-    };
-    reader.readAsDataURL(file);
+    } catch (uploadErr: any) {
+      console.error('[UploadNode] MinIO 上传失败:', uploadErr);
+      alert(`上传失败：${uploadErr.message}\n请确认 MinIO 存储服务已启动（docker start workflow_minio）`);
+    }
   }, [id, setNodes]);
+
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
