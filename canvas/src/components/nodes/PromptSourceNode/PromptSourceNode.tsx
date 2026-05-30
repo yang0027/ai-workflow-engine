@@ -95,19 +95,39 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
   };
 
   return (
-    <div ref={containerRef} className="glass-panel text-left custom-drag-handle" style={nodeStyle}>
+    <div ref={containerRef} className="glass-panel text-left" style={nodeStyle}>
       {selected && (
         <NodeResizer
           color="#a855f7"
-          minWidth={320}
-          minHeight={280}
-          lineStyle={{ border: '1.5px solid rgba(168, 85, 247, 0.85)' }}
-          handleStyle={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7' }}
+          minWidth={280}
+          minHeight={150}
+          lineStyle={{ border: '1.5px solid rgba(168, 85, 247, 0.85)', zIndex: 1000 }}
+          handleStyle={{ 
+            width: 12, 
+            height: 12, 
+            borderRadius: '50%', 
+            background: '#a855f7', 
+            border: '2px solid #fff',
+            boxShadow: '0 0 8px rgba(168, 85, 247, 0.6)',
+            cursor: 'nwse-resize',
+            zIndex: 1001,
+            pointerEvents: 'all'
+          }}
         />
       )}
 
-      {/* 头部与物理删除 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+      {/* 头部与物理删除 - 变更为 custom-drag-handle，这样仅在头部拖拽时有效，完美与缩放隔离开！ */}
+      <div 
+        className="custom-drag-handle"
+        style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: '12px',
+          cursor: 'grab',
+          userSelect: 'none'
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
           <span style={{ fontSize: '16px' }}>📝</span>
           {logic.isEditingName ? (
@@ -151,6 +171,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
         </div>
         <button
           onClick={logic.handleDelete}
+          className="nodrag"
           style={{
             width: '20px',
             height: '20px',
@@ -310,7 +331,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
             </div>
           ) : (
             /* 大型文本编辑器 */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '100px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '100px', overflow: 'hidden' }}>
               <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>编辑剧本/小说原文 (支持复制粘贴):</span>
               <WorkflowTextarea
                 id={`textarea-${id}`}
@@ -318,8 +339,9 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
                 onChange={logic.handleTextChange}
                 placeholder="在此编写剧本描述，或者通过下方按钮优化与反推提示词..."
                 style={{
-                  height: '200px',
-                  minHeight: '120px',
+                  flex: 1,
+                  height: '100%',
+                  minHeight: '80px',
                   padding: '8px 12px'
                 }}
               />

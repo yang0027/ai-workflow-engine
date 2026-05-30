@@ -186,7 +186,7 @@ export function useImageNodeLogic({
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const res = await fetch('http://localhost:3000/api/v1/settings');
+        const res = await fetch('/api/v1/settings');
         if (res.ok) {
           const settingsData = await res.json();
           setSettings(settingsData);
@@ -531,7 +531,7 @@ export function useImageNodeLogic({
             return;
           }
 
-          const res = await fetch('http://localhost:3000/api/v1/image/generate', {
+          const res = await fetch('/api/v1/image/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

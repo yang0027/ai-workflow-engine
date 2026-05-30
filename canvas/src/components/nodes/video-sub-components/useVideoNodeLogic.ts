@@ -226,7 +226,7 @@ export function useVideoNodeLogic({
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const res = await fetch('http://localhost:3000/api/v1/settings');
+        const res = await fetch('/api/v1/settings');
         if (res.ok) {
           const settingsData = await res.json();
           setSettings(settingsData);
@@ -576,7 +576,7 @@ export function useVideoNodeLogic({
           return;
         }
 
-        const res = await fetch('http://localhost:3000/api/v1/workflow/video/fusion', {
+        const res = await fetch('/api/v1/workflow/video/fusion', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

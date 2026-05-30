@@ -165,7 +165,7 @@ export function ConnectedImagePreview({ imageValue, nodeId, portId, onComfyFilen
       const formData = new FormData();
       formData.append('image', file);
 
-      const uploadRes = await fetch('http://localhost:3000/api/v1/comfyui/upload', {
+      const uploadRes = await fetch('/api/v1/comfyui/upload', {
         method: 'POST',
         body: formData
       });

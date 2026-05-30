@@ -1,4 +1,4 @@
-const GATEWAY_URL = 'http://localhost:3000';
+const GATEWAY_URL = '/';
 
 export type WorkflowTemplateSource = 'local_comfyui' | 'runninghub';
 export type WorkflowTemplateCapability = 'image' | 'video' | 'audio' | 'workflow';

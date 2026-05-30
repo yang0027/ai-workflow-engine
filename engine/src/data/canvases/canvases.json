@@ -103,7 +103,7 @@
           "outputs": {},
           "isNew": false
         },
-        "selected": true,
+        "selected": false,
         "measured": {
           "width": 180,
           "height": 180
@@ -190,11 +190,41 @@
           "height": 280
         },
         "dragging": false
+      },
+      {
+        "id": "upload-node-1780126436331",
+        "type": "upload-node",
+        "position": {
+          "x": -952.9979806008839,
+          "y": -308.12306816960114
+        },
+        "width": 180,
+        "height": 180,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "video",
+            "fileUrl": "http://localhost:3000/api/v1/media/workflows/upload-1780126440695-p9ba6jgf.mp4",
+            "fileName": "🦄💙MINAMI💙🦄 (@minami.0819) 官方账号1.mp4"
+          },
+          "outputs": {
+            "output": "http://localhost:3000/api/v1/media/workflows/upload-1780126440695-p9ba6jgf.mp4",
+            "fileType": "video"
+          },
+          "isNew": false
+        },
+        "selected": true,
+        "measured": {
+          "width": 180,
+          "height": 180
+        },
+        "dragging": false
       }
     ],
     "edges": [],
     "createdAt": "2026-05-29T07:45:32.788Z",
-    "updatedAt": "2026-05-29T07:56:54.415Z"
+    "updatedAt": "2026-05-30T07:35:14.216Z"
   },
   {
     "id": "59d0c08d-5ef9-4f90-8b58-bfa281e73658",
@@ -230,27 +260,31 @@
         "id": "upload-node-1780040769350",
         "type": "upload-node",
         "position": {
-          "x": 281.28441943318006,
-          "y": -126.03216536330275
+          "x": 1211.8107352226536,
+          "y": 238.17836095248674
         },
-        "width": 300,
-        "height": 260,
+        "width": 180,
+        "height": 180,
         "dragHandle": ".custom-drag-handle",
         "data": {
           "label": "📦 本地上传",
           "inputs": {
-            "fileType": "image",
-            "fileUrl": "",
-            "fileName": ""
+            "fileType": "video",
+            "fileUrl": "http://localhost:3000/api/v1/media/workflows/upload-1780126451831-whq6a2f3.mp4",
+            "fileName": "556655.mp4"
           },
-          "outputs": {},
+          "outputs": {
+            "output": "http://localhost:3000/api/v1/media/workflows/upload-1780126451831-whq6a2f3.mp4",
+            "fileType": "video"
+          },
           "isNew": true
         },
         "selected": false,
         "measured": {
           "width": 180,
           "height": 180
-        }
+        },
+        "dragging": false
       },
       {
         "id": "upload-node-1780040770350",
@@ -272,7 +306,7 @@
           "outputs": {},
           "isNew": true
         },
-        "selected": true,
+        "selected": false,
         "measured": {
           "width": 180,
           "height": 180
@@ -281,6 +315,47 @@
     ],
     "edges": [],
     "createdAt": "2026-05-29T07:46:02.953Z",
-    "updatedAt": "2026-05-29T07:46:18.516Z"
+    "updatedAt": "2026-05-30T07:34:19.340Z",
+    "deletedAt": "2026-05-30T07:35:22.366Z"
+  },
+  {
+    "id": "59c63f0e-0626-4b8e-85be-e521abb00c25",
+    "name": "新画布 1780126464587",
+    "nodes": [
+      {
+        "id": "upload-node-1780126470963",
+        "type": "upload-node",
+        "position": {
+          "x": -588.5602332494948,
+          "y": -264.43167746748713
+        },
+        "width": 180,
+        "height": 180,
+        "dragHandle": ".custom-drag-handle",
+        "data": {
+          "label": "📦 本地上传",
+          "inputs": {
+            "fileType": "video",
+            "fileUrl": "http://localhost:3000/api/v1/media/workflows/upload-1780126478066-og63yp56.mp4",
+            "fileName": "222.mp4"
+          },
+          "outputs": {
+            "output": "http://localhost:3000/api/v1/media/workflows/upload-1780126478066-og63yp56.mp4",
+            "fileType": "video"
+          },
+          "isNew": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 180,
+          "height": 180
+        },
+        "dragging": false
+      }
+    ],
+    "edges": [],
+    "createdAt": "2026-05-30T07:34:24.592Z",
+    "updatedAt": "2026-05-30T07:35:11.699Z",
+    "deletedAt": "2026-05-30T07:35:20.265Z"
   }
 ]

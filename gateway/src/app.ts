@@ -23,6 +23,15 @@ const fastify = Fastify({
 // 注册 CORS 与 WebSocket 和文件上传
 await fastify.register(cors, { origin: true });
 await fastify.register(websocket);
+
+// 全局 OPTIONS 拦截：确保所有 /api/* 路由的 preflight 都能正确响应 CORS
+fastify.options('/api/*', async (request, reply) => {
+  reply.header('Access-Control-Allow-Origin', request.headers.origin || '*');
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  reply.header('Access-Control-Max-Age', '86400');
+  reply.code(204).send();
+});
 await fastify.register(multipart, {
   limits: {
     fileSize: 500 * 1024 * 1024 // 500MB
@@ -565,15 +574,20 @@ fastify.delete('/api/v1/skills/:id', async (request, reply) => {
 
 // ============ 12. 网关代理：通用大语言模型调度代理 ============
 fastify.post('/api/v1/llm/chat', async (request, reply) => {
+  reply.header('Access-Control-Allow-Origin', request.headers.origin || '*');
   try {
     const response = await fetch(`${ENGINE_URL}/api/v1/engine/llm/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request.body)
     });
-    const data = await response.json();
+    const text = await response.text();
+    fastify.log.info(`[gateway→engine] status=${response.status} body=${text.substring(0, 300)}`);
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
     return reply.status(response.status).send(data);
   } catch (err: any) {
+    fastify.log.error(`[gateway→engine] fetch failed: ${err.message}`);
     return reply.status(500).send({ error: `Engine unreachable: ${err.message}` });
   }
 });

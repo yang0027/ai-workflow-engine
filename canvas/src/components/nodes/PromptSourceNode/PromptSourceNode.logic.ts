@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useReactFlow, useStore, useNodes } from '@xyflow/react';
 import { PromptSourceNodeData, TableRow, DOWNSTREAM_TYPES } from './PromptSourceNode.config';
+import { executeNode } from '../../../hooks/executeNode';
+import { getUpstreamData } from '../../../hooks/getUpstreamData';
+import type { UpstreamData } from '../../../hooks/getUpstreamData';
 
 export interface UsePromptSourceNodeLogicProps {
   id: string;
@@ -54,10 +57,10 @@ export function usePromptSourceNodeLogic({
   const edges = useStore((state) => state.edges);
   const nodes = useNodes();
 
-  // 加载 settings
+  // settings 用于模型选择器（provider/model 列表）
   const [settings, setSettings] = useState<any>(null);
   useEffect(() => {
-    fetch('http://localhost:3000/api/v1/settings')
+    fetch('/api/v1/settings')
       .then(res => res.ok ? res.json() : null)
       .then(data => data && setSettings(data))
       .catch(() => {});
@@ -209,103 +212,93 @@ export function usePromptSourceNodeLogic({
     );
   }, [id, setNodes]);
 
-  // 将远程图片 URL 转为 data:image/...;base64, 格式
-  const fetchImageAsBase64 = async (url: string): Promise<string> => {
-    if (url.startsWith('data:')) return url;
-    const res = await fetch(url, { mode: 'cors' });
-    if (!res.ok) throw new Error(`图片加载失败: ${res.status}`);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
   const handleGenerate = useCallback(async () => {
     const textVal2 = data.inputs?.text || '';
-    const hasImage = !!connectedImageRef;
+    const upstream: UpstreamData = getUpstreamData(id, edges, nodes);
+    const hasImage = !!upstream.image || upstream.images.length > 0;
+
     if (!textVal2.trim() && !hasImage) {
       alert('请输入剧本或小说原文描述，或者在左侧连线上传图像进行反推！');
       return;
     }
 
     setGenerating(true);
-    let resultText = '';
-    let apiSuccess = false;
 
     try {
-      let imageBase64: string | null = null;
-      if (hasImage && connectedImage) {
-        imageBase64 = await fetchImageAsBase64(connectedImage);
-      }
-
-      // 有图片但当前模型不支持 vision 时，在同 provider 下找 VL 模型替换
-      let effectiveVendor = activeVendor;
-      let effectiveModel = selectedModel;
-      if (imageBase64 && settings?.providers) {
-        const pModels = settings.providers[activeVendor]?.models || [];
-        const vlModel = pModels.find((m: string) =>
-          m.toLowerCase().startsWith('qwen') && m.toLowerCase().includes('vl')
-        );
-        if (vlModel && vlModel !== selectedModel) {
-          effectiveModel = vlModel;
-          console.log(`[图像反推] 当前模型 ${selectedModel} 不支持 vision，自动切换到同 provider VL 模型: ${vlModel}`);
-          // 同步更新 node data 中的模型
-          setNodes((nodes) =>
-            nodes.map((n) => {
-              if (n.id === id) {
-                return {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    inputs: { ...((n.data as any)?.inputs || {}), model: vlModel }
-                  }
-                };
-              }
-              return n;
-            })
-          );
-        }
-      }
-
+      // systemPrompt 根据是否有图选择
       const systemPrompt = hasImage
         ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
         : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
 
-      const body: any = {
-        providerId: effectiveVendor,
-        model: effectiveModel,
-        messages: [
-          {
-            role: 'user',
-            content: imageBase64
-              ? [
-                  { type: 'image_url', image_url: { url: imageBase64 } },
-                  { type: 'text', text: textVal2 || '请反推这张图片的生图提示词' }
-                ]
-              : textVal2
-          }
-        ],
-        systemPrompt
+      const nodeInputsWithSystem = {
+        ...data.inputs,
+        systemPrompt,
       };
 
-      const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      const result = await executeNode({
+        nodeId: id,
+        nodeType: 'prompt-source',
+        mediaType: 'text',
+        actionType: 'chat',
+        upstreamData: upstream,
+        modelConfig: {
+          providerId: activeVendor,
+          modelId: selectedModel,
+        },
+        nodeInputs: nodeInputsWithSystem,
       });
 
-      const resData = await res.json();
-      if (res.ok && resData.choices?.[0]?.message?.content) {
-        resultText = resData.choices[0].message.content;
-        apiSuccess = true;
-      } else if (resData.error) {
-        throw new Error(`API Error: ${resData.error}`);
-      } else {
-        throw new Error(`HTTP ${res.status} | Response: ${JSON.stringify(resData)}`);
+      if (!result.success) {
+        const errMsg = result.error?.message || '剧本处理失败';
+        window.dispatchEvent(
+          new CustomEvent('add-failure-log', {
+            detail: {
+              nodeId: id,
+              nodeName: data.label || '文本',
+              model: selectedModel,
+              errorMsg: errMsg,
+            }
+          })
+        );
+        setGenerating(false);
+        return;
       }
+
+      const resultText = result.data?.content || '';
+
+      setNodes((nodes) =>
+        nodes.map((n) => {
+          if (n.id === id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                inputs: {
+                  ...((n.data as any)?.inputs || {}),
+                  text: resultText,
+                  model: result.data?.model || selectedModel,
+                },
+                outputs: {
+                  text: resultText,
+                  output: resultText
+                }
+              }
+            };
+          }
+          return n;
+        })
+      );
+
+      window.dispatchEvent(
+        new CustomEvent('add-success-log', {
+          detail: {
+            nodeId: id,
+            nodeName: data.label || '文本',
+            model: result.data?.model || selectedModel,
+            errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
+          }
+        })
+      );
     } catch (e: any) {
       window.dispatchEvent(
         new CustomEvent('add-failure-log', {
@@ -317,44 +310,10 @@ export function usePromptSourceNodeLogic({
           }
         })
       );
+    } finally {
       setGenerating(false);
-      return;
     }
-
-    setNodes((nodes) =>
-      nodes.map((n) => {
-        if (n.id === id) {
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              inputs: {
-                ...((n.data as any)?.inputs || {}),
-                text: resultText
-              },
-              outputs: {
-                text: resultText,
-                output: resultText
-              }
-            }
-          };
-        }
-        return n;
-      })
-    );
-
-    window.dispatchEvent(
-      new CustomEvent('add-success-log', {
-        detail: {
-          nodeId: id,
-          nodeName: data.label || '文本',
-          model: selectedModel,
-          errorMsg: hasImage ? '图像反推提示词成功 ✅' : '剧本智能优化成功 ✅'
-        }
-      })
-    );
-    setGenerating(false);
-  }, [data, connectedImageRef, connectedImage, textVal, activeVendor, selectedModel, id, setNodes]);
+  }, [data, activeVendor, selectedModel, id, setNodes, edges, nodes]);
 
   const handleSpawnImageService = useCallback(() => {
     if ((window as any).spawnLinkedNode) {

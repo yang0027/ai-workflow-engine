@@ -146,7 +146,7 @@ export function useCustomWorkflowNodeLogic({
       const formData = new FormData();
       formData.append('image', file); // ComfyUI expects key 'image' for uploads
 
-      const uploadRes = await fetch('http://localhost:3000/api/v1/comfyui/upload', {
+      const uploadRes = await fetch('/api/v1/comfyui/upload', {
         method: 'POST',
         body: formData
       });

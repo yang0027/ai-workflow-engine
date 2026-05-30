@@ -380,6 +380,8 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
       systemPrompt?: string;
     };
 
+    fastify.log.info(`[llm/chat] provider=${providerId} model=${model} msgs=${messages?.length}`);
+
     if (!providerId || !model || !messages) {
       return reply.status(400).send({ error: 'Missing providerId, model or messages' });
     }
@@ -408,8 +410,8 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
 
     return response.data;
   } catch (err: any) {
-    fastify.log.error(err);
-    return reply.status(500).send({ error: err.message });
+    fastify.log.error(`[llm/chat] axios error: status=${err.response?.status} message=${err.message} data=${JSON.stringify(err.response?.data)?.substring(0, 200)}`);
+    return reply.status(500).send({ error: err.message, detail: err.response?.data });
   }
 });
 

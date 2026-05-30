@@ -1,4 +1,4 @@
-const GATEWAY_URL = 'http://localhost:3000';
+const GATEWAY_URL = '/';
 
 export interface ComfyUIWorkflowField {
   id: string;

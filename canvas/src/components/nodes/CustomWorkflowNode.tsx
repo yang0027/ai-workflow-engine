@@ -521,7 +521,7 @@ export default function CustomWorkflowNode({ id, data, selected = false }: Custo
                   let finalImgUrl = displayVal;
                   if (displayVal.startsWith('db://')) {
                     const mediaId = displayVal.replace('db://', '');
-                    finalImgUrl = `http://localhost:3000/api/v1/assets/media/${mediaId}`;
+                    finalImgUrl = `/api/v1/assets/media/${mediaId}`;
                   }
                   return (
                     <div key={map.portId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

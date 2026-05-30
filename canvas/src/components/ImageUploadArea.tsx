@@ -111,7 +111,7 @@ export function ImageUploadArea({ displayVal, portId, onImageUploaded }: ImageUp
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('http://localhost:3000/api/v1/comfyui/upload', {
+      const response = await fetch('/api/v1/comfyui/upload', {
         method: 'POST',
         body: formData
       });

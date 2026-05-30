@@ -118,7 +118,17 @@ export const WorkflowTextarea = React.forwardRef<HTMLTextAreaElement, WorkflowTe
         `}</style>
         <textarea
           {...rest}
-          ref={setRefs}
+          ref={(node) => {
+            setRefs(node);
+            if (node) {
+              // 捕获阶段拦截原生 wheel 事件并强行切断，防止 ReactFlow 的全局被动 wheel 监听器捕获它
+              const blockWheel = (e: WheelEvent) => {
+                e.stopPropagation();
+              };
+              node.removeEventListener('wheel', blockWheel);
+              node.addEventListener('wheel', blockWheel, { capture: true, passive: true });
+            }
+          }}
           rows={rows}
           value={value}
           aria-disabled={disabled || undefined}

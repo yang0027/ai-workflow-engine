@@ -67,8 +67,10 @@ export const HANDLE_STYLE: React.CSSProperties = {
 };
 
 export const NODE_STYLE: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
   minWidth: '320px',
-  minHeight: '280px',
+  minHeight: '180px',
   background: 'rgba(15, 23, 42, 0.85)',
   borderRadius: '12px',
   padding: '16px',

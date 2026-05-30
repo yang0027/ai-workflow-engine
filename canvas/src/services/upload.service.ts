@@ -20,7 +20,7 @@ export class UploadService {
     formData.append('filename', file.name);
     formData.append('fileType', fileType);
 
-    const res = await fetch('http://localhost:3000/api/v1/upload/multipart', {
+    const res = await fetch('/api/v1/upload/multipart', {
       method: 'POST',
       body: formData
       // 注意：不设 Content-Type，让浏览器自动设 multipart/form-data boundary
@@ -51,7 +51,7 @@ export class UploadService {
     fileName: string,
     fileType: 'image' | 'video' | 'audio'
   ): Promise<string> {
-    const res = await fetch('http://localhost:3000/api/v1/upload', {
+    const res = await fetch('/api/v1/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

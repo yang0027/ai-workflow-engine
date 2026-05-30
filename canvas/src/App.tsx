@@ -3553,7 +3553,7 @@ function WorkflowCanvas() {
     }
     setIsParsingScript(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/llm/chat', {
+      const res = await fetch('/api/v1/llm/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4088,7 +4088,7 @@ function WorkflowCanvas() {
 
     setParsing(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/custom-workflow/parse', {
+      const res = await fetch('/api/v1/custom-workflow/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4141,7 +4141,7 @@ function WorkflowCanvas() {
       try {
         // 提交整个 React Flow 画布的节点和连线给网关执行拓扑检验与异步流转
         const injectedNodes = injectGroupCompositeData(nodes, edges);
-        const res = await fetch('http://localhost:3000/api/v1/workflow/run', {
+        const res = await fetch('/api/v1/workflow/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

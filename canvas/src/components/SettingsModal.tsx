@@ -266,7 +266,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/settings');
+      const res = await fetch('/api/v1/settings');
       if (res.ok) {
         const data = await res.json();
         if (!data.model_cache) {
@@ -575,7 +575,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/settings', {
+      const res = await fetch('/api/v1/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...settings, model_cache: { ...settings.model_cache, _initialized: true } })
@@ -629,7 +629,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
     }));
 
     try {
-      const res = await fetch('http://localhost:3000/api/v1/settings/comfy/test', {
+      const res = await fetch('/api/v1/settings/comfy/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: addr })
@@ -681,7 +681,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
     }));
 
     try {
-      const res = await fetch('http://localhost:3000/api/v1/settings/provider/test', {
+      const res = await fetch('/api/v1/settings/provider/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1838,7 +1838,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                               type="text" 
                               value={customProviderBaseUrl}
                               onChange={(e) => setCustomProviderBaseUrl(e.target.value)}
-                              placeholder="https://api.fish.audio"
+                              placeholder="https:/api.fish.audio"
                               autoComplete="new-password"
                               style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '6px 10px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'monospace' }}
                             />

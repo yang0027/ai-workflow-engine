@@ -2,7 +2,7 @@ import { ComfyUIService } from './comfyui.service';
 import { RunningHubWorkflow } from '../config/runninghub.config';
 import { PRESET_WORKFLOWS } from '../presets/workflows';
 
-const GATEWAY_URL = 'http://localhost:3000';
+const GATEWAY_URL = '/';
 
 export interface ComfyUIWorkflow {
   id: string;
