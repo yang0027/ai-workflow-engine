@@ -159,7 +159,7 @@ export interface NodePort {
 export const NODE_REGISTRY: Record<string, NodeRegistration> = {
   'prompt-source': {
     type: 'prompt-source',
-    label: '📖 故事剧本源',
+    label: '📝 文本',
     category: '剧本',
     mediaType: 'text',
     actionType: 'chat',

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { RunningHubService } from '../services/runninghub.service';
 import { RunningHubWorkflow } from '../config/runninghub.config';
 import { 
@@ -14,7 +15,11 @@ import {
   getModelCategory, 
   countModelsByCategory, 
   filterModelsByCategory,
-  type ModelCategory 
+  getCachedModelCategory,
+  getModelCacheKey,
+  modelCacheIncludes,
+  type ModelCategory,
+  type ModelCache 
 } from './SettingsModal/modelCategories';
 import { WorkflowTextarea } from './WorkflowTextarea';
 
@@ -25,15 +30,6 @@ interface ProviderConfig {
   models: string[];
   name?: string;
   icon?: string;
-}
-
-interface ModelCache {
-  chat: string[];
-  image: string[];
-  video: string[];
-  tts: string[];
-  search: string[];
-  other: string[];
 }
 
 interface Settings {
@@ -52,7 +48,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   const [settings, setSettings] = useState<Settings>({
     comfyui_instances: ['127.0.0.1:8188'],
     providers: {},
-    model_cache: { chat: [], image: [], video: [], tts: [], search: [], other: [] }
+    model_cache: { chat: [], image: [], video: [], tts: [], search: [], other: [], disabled: [] }
   });
 
   const [loading, setLoading] = useState(false);
@@ -102,6 +98,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
   // 状态追踪
   const [cacheSubTab, setCacheSubTab] = useState<'image' | 'tts' | 'video' | 'chat' | 'search' | 'other'>('image');
   const [movingModel, setMovingModel] = useState<string | null>(null);
+  const moveBtnRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [comfyTestStatus, setComfyTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string }>>({});
   const [providerTestStatus, setProviderTestStatus] = useState<Record<string, { loading: boolean; success?: boolean; message?: string; modelCount?: number }>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -224,27 +221,49 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
 
   // 按类别统计实际可用模型数量
   const categoryModelCounts = React.useMemo(() => {
-    return countModelsByCategory(allAvailableModels);
-  }, [allAvailableModels]);
+    return countModelsByCategory(allAvailableModels, settings.model_cache);
+  }, [allAvailableModels, settings.model_cache]);
 
-  // 按分类过滤的模型列表
+  // 按分类过滤的模型列表（优先读 model_cache 实际分类，fallback 到正则）
   const filteredModels = React.useMemo(() => {
-    return filterModelsByCategory(allAvailableModels, cacheSubTab);
-  }, [allAvailableModels, cacheSubTab]);
+    return filterModelsByCategory(allAvailableModels, cacheSubTab, settings.model_cache);
+  }, [allAvailableModels, cacheSubTab, settings.model_cache]);
 
   // 移动模型到指定分类
   const moveModelToCategory = (modelName: string, targetCategory: ModelCategory) => {
+    console.log('[moveModelToCategory] model=', modelName, 'target=', targetCategory);
     setSettings(prev => {
-      const newCache = { ...prev.model_cache };
-      // 从所有分类中移除
-      (Object.keys(newCache) as Array<keyof ModelCache>).forEach(cat => {
-        newCache[cat] = (newCache[cat] || []).filter((m: string) => m !== modelName);
+      const newCache = JSON.parse(JSON.stringify(prev.model_cache)) as ModelCache;
+      const model = allAvailableModels.find(item => item.modelName === modelName) || { modelName };
+      const modelKey = getModelCacheKey(model);
+      // 从所有能力分类中移除，disabled 属于启停状态，不能被移动分类影响。
+      (Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[]).forEach(cat => {
+        const list = Array.isArray(newCache[cat]) ? newCache[cat] : [];
+        newCache[cat] = list.filter((m: string) => m !== modelName && m !== modelKey);
       });
       // 添加到目标分类
-      newCache[targetCategory] = [...(newCache[targetCategory] || []), modelName];
-      return { ...prev, model_cache: newCache };
+      const targetList = Array.isArray(newCache[targetCategory]) ? newCache[targetCategory] : [];
+      newCache[targetCategory] = [...targetList, modelKey];
+      const updated = { ...prev, model_cache: newCache };
+      console.log('[moveModelToCategory] newCache=', JSON.stringify(newCache));
+      // 立即保存到后端
+      fetch('/api/v1/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updated, model_cache: { ...updated.model_cache, _initialized: true } })
+      }).then(r => r.json()).then(d => console.log('[moveModelToCategory] save result=', d)).catch(e => console.error('保存模型分类失败:', e));
+      return updated;
     });
     setMovingModel(null);
+  };
+
+  const saveModelCache = (nextCache: ModelCache) => {
+    const updated = { ...settings, model_cache: { ...nextCache, _initialized: true } as any };
+    fetch('/api/v1/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    }).catch(e => console.error('保存模型缓存失败:', e));
   };
 
   // 1. 获取配置数据
@@ -278,6 +297,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
           if (!data.model_cache.tts) data.model_cache.tts = [];
           if (!data.model_cache.search) data.model_cache.search = [];
           if (!data.model_cache.other) data.model_cache.other = [];
+          if (!data.model_cache.disabled) data.model_cache.disabled = [];
         }
         setSettings(data);
       }
@@ -1538,10 +1558,10 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                           paddingRight: '6px'
                         }}>
                           {filteredModels.map((item: any, index: number) => {
-                            const isActive = Array.isArray(settings.model_cache[cacheSubTab]) &&
-                              settings.model_cache[cacheSubTab].includes(item.modelName);
+                            const isActive = !modelCacheIncludes(settings.model_cache.disabled, item);
                             const isRecommended = isRecommendedModel(item.modelName, item.providerId);
                             const isNew = isNewModel(item.modelName);
+                            const cachedCategory = getCachedModelCategory(item, settings.model_cache);
 
                             return (
                               <div
@@ -1561,18 +1581,16 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                   cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                  const currentCache = { ...settings.model_cache };
-                                  const list = [...(currentCache[cacheSubTab] || [])];
+                                  const currentCache = { ...settings.model_cache, disabled: [...(settings.model_cache.disabled || [])] };
+                                  const modelKey = getModelCacheKey(item);
+                                  const list = [...(currentCache.disabled || [])];
                                   if (isActive) {
-                                    const nextList = list.filter(m => m !== item.modelName);
-                                    currentCache[cacheSubTab] = nextList;
+                                    currentCache.disabled = Array.from(new Set([...list, modelKey]));
                                   } else {
-                                    if (!list.includes(item.modelName)) {
-                                      list.push(item.modelName);
-                                    }
-                                    currentCache[cacheSubTab] = list;
+                                    currentCache.disabled = list.filter(m => m !== item.modelName && m !== modelKey);
                                   }
                                   setSettings({ ...settings, model_cache: currentCache });
+                                  saveModelCache(currentCache);
                                 }}
                               >
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '75%', pointerEvents: 'none' }}>
@@ -1621,90 +1639,34 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                   <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <span>{item.icon}</span>
                                     <span>{item.providerName}</span>
-                                    <span style={{ color: '#a78bfa' }}>({getModelCategory(item.modelName)})</span>
+                                    <span style={{ color: '#a78bfa' }}>({cachedCategory})</span>
                                   </div>
                                 </div>
 
                                 {/* 右侧操作区 */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {/* 移动到下拉菜单 */}
-                                  <div style={{ position: 'relative' }}>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setMovingModel(movingModel === item.modelName ? null : item.modelName);
-                                      }}
-                                      style={{
-                                        padding: '3px 6px',
-                                        background: 'rgba(167, 139, 250, 0.1)',
-                                        border: '1px solid rgba(167, 139, 250, 0.2)',
-                                        borderRadius: '4px',
-                                        fontSize: '10px',
-                                        color: '#a78bfa',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '2px'
-                                      }}
-                                    >
-                                      🔄 移动
-                                    </button>
-                                      {movingModel === item.modelName && (
-                                        <div style={{
-                                          position: 'absolute',
-                                          top: '100%',
-                                          right: 0,
-                                          marginTop: '4px',
-                                          background: 'rgba(15, 15, 20, 0.98)',
-                                          border: '1px solid rgba(255,255,255,0.1)',
-                                          borderRadius: '6px',
-                                          padding: '4px',
-                                          zIndex: 1000,
-                                          minWidth: '100px',
-                                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                                        }}>
-                                          {/* 排除当前分类的选项 */}
-                                          {(Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[])
-                                            .filter(catId => catId !== getModelCategory(item.modelName))
-                                            .map(catId => {
-                                              const config = MODEL_CATEGORY_CONFIG[catId];
-                                              return (
-                                                <button
-                                                  key={catId}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    moveModelToCategory(item.modelName, catId);
-                                                  }}
-                                                  style={{
-                                                    width: '100%',
-                                                    padding: '6px 10px',
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px',
-                                                    color: '#d4d4d8',
-                                                    cursor: 'pointer',
-                                                    textAlign: 'left',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px'
-                                                  }}
-                                                  onMouseEnter={(e) => {
-                                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                                                    e.currentTarget.style.color = '#fff';
-                                                  }}
-                                                  onMouseLeave={(e) => {
-                                                    e.currentTarget.style.background = 'transparent';
-                                                    e.currentTarget.style.color = '#d4d4d8';
-                                                  }}
-                                                >
-                                                  {config.emoji} {config.label}
-                                                </button>
-                                              );
-                                            })}
-                                        </div>
-                                      )}
-                                    </div>
+                                  {/* 移动到下拉菜单 — 用 portal 渲染到 body 顶层 */}
+                                  <button
+                                    ref={el => { (moveBtnRefs as any).current[index] = el; }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMovingModel(movingModel === item.modelName ? null : item.modelName);
+                                    }}
+                                    style={{
+                                      padding: '3px 6px',
+                                      background: 'rgba(167, 139, 250, 0.1)',
+                                      border: '1px solid rgba(167, 139, 250, 0.2)',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      color: '#a78bfa',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '2px'
+                                    }}
+                                  >
+                                    🔄 移动
+                                  </button>
 
                                     {/* Toggle 开关 */}
                                   <div
@@ -2981,6 +2943,66 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+
+      {/* 全局 Portal 下拉：移动模型分类 — 始终渲染到 body 顶层 */}
+      {movingModel != null && (() => {
+        const itemIndex = filteredModels.findIndex(m => m.modelName === movingModel);
+        const btn = itemIndex >= 0 ? moveBtnRefs.current[itemIndex] : null;
+        const rect = btn?.getBoundingClientRect();
+        if (!rect) return null;
+        const movingItem = filteredModels.find(m => m.modelName === movingModel) || { modelName: movingModel };
+        const currentCat = getCachedModelCategory(movingItem, settings.model_cache);
+        const cats = (Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[]).filter(catId => catId !== currentCat);
+        return createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: rect.bottom + 4,
+              right: window.innerWidth - rect.right,
+              background: 'rgba(15, 15, 20, 0.98)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 6,
+              padding: 4,
+              zIndex: 99999,
+              minWidth: 120,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              animation: 'fadeIn 0.15s ease'
+            }}
+          >
+            {cats.map(catId => {
+              const config = MODEL_CATEGORY_CONFIG[catId];
+              return (
+                <button
+                  key={catId}
+                  onClick={() => {
+                    try { moveModelToCategory(movingModel, catId); } catch(e) { console.error(e); }
+                    setMovingModel(null);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    color: '#d4d4d8',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#d4d4d8'; }}
+                >
+                  {config.emoji} {config.label}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }

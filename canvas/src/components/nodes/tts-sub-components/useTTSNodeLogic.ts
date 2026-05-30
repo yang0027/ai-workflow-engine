@@ -39,7 +39,6 @@ export function useTTSNodeLogic({
   // 2. 状态管理
   const [activeTab, setActiveTab] = useState<'standard' | 'aix'>(data.inputs?.activeTab || 'standard');
   const [runningHubTemplateId, setRunningHubTemplateId] = useState<string>(data.inputs?.runningHubTemplateId || 'rh_wf_voice_consistency');
-  const [ttsModels, setTtsModels] = useState<string[]>(['fish-speech-1.4', 'minimax-tts-clone', 'volc-tts-premium']);
   const [cloning, setCloning] = useState(false);
   const [clonedAudio, setClonedAudio] = useState('');
   const [settings, setSettings] = useState<any>(null);
@@ -132,9 +131,6 @@ export function useTTSNodeLogic({
         if (res.ok) {
           const settingsData = await res.json();
           setSettings(settingsData);
-          if (settingsData.model_cache?.tts) {
-            setTtsModels(settingsData.model_cache.tts);
-          }
         }
       } catch (e) {
         console.error('加载 TTSServiceNode 外部依赖失败:', e);
@@ -545,7 +541,6 @@ export function useTTSNodeLogic({
     workflowIdOrJson,
     activeTab,
     runningHubTemplateId: wfSelector.currentWorkflow?.id || '',
-    ttsModels,
     cloning,
     clonedAudio,
     settings,

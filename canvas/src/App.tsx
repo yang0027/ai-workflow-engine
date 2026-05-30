@@ -215,7 +215,7 @@ const TOPOLOGY_RECOMMENDATIONS: Record<string, { upstream: Array<{ type: string,
   },
   'llm-service': {
     upstream: [
-      { type: 'prompt-source', label: '📖 故事剧本源' }
+      { type: 'prompt-source', label: '📝 文本' }
     ],
     downstream: [
       { type: 'image-service', label: '🎨 智能生图 Agent' },
@@ -224,7 +224,7 @@ const TOPOLOGY_RECOMMENDATIONS: Record<string, { upstream: Array<{ type: string,
   },
   'image-service': {
     upstream: [
-      { type: 'prompt-source', label: '📖 故事剧本源' },
+      { type: 'prompt-source', label: '📝 文本' },
       { type: 'llm-service', label: '🧠 剧本分镜专家' },
       { type: 'upload-node', label: '📦 本地上传组件' }
     ],
@@ -235,7 +235,7 @@ const TOPOLOGY_RECOMMENDATIONS: Record<string, { upstream: Array<{ type: string,
   },
   'tts-service': {
     upstream: [
-      { type: 'prompt-source', label: '📖 故事剧本源' },
+      { type: 'prompt-source', label: '📝 文本' },
       { type: 'llm-service', label: '🧠 剧本分镜专家' }
     ],
     downstream: [
@@ -500,8 +500,8 @@ function WorkflowCanvas() {
     let dataOutputs: any = {};
 
     if (targetType === 'prompt-source') {
-      label = '📖 故事剧本源';
-      dataInputs = { text: '派生的剧本内容...' };
+      label = '📝 文本';
+      dataInputs = { text: '派生的文本内容...' };
       dataOutputs = { output: '', text: '' };
     } else if (targetType === 'upload-node') {
       label = '📦 本地上传';
@@ -986,7 +986,23 @@ function WorkflowCanvas() {
     errorMsg: string;
     status?: 'success' | 'failure';
   }
-  const [failureLogs, setFailureLogs] = useState<FailureLog[]>([]);
+  const [failureLogs, setFailureLogs] = useState<FailureLog[]>(() => {
+    try {
+      const saved = localStorage.getItem('canvas_failure_logs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      // 限制持久化日志总数，防止 LocalStorage 溢出 (最大保留最近 100 条)
+      localStorage.setItem('canvas_failure_logs', JSON.stringify(failureLogs.slice(0, 100)));
+    } catch (e) {
+      console.error('[FailureLogs] 持久化写入失败:', e);
+    }
+  }, [failureLogs]);
 
   useEffect(() => {
     const handleAddFailureLog = (e: Event) => {
@@ -2184,9 +2200,9 @@ function WorkflowCanvas() {
         width: 280,
         height: 160,
         data: {
-          label: '📖 故事剧本源',
+          label: '📝 文本',
           inputs: {
-            text: '双击空白处热新增的镜头剧本...'
+            text: '双击空白处热新增的文本内容...'
           },
           outputs: {},
           isNew: true
@@ -2204,7 +2220,7 @@ function WorkflowCanvas() {
         } : n));
       }, 3000);
 
-      alert('🎉 已通过双击在当前指针落点热新增 [📖 故事剧本源] 节点！');
+      alert('🎉 已通过双击在当前指针落点热新增 [📝 文本] 节点！');
     },
     [screenToFlowPosition, setNodes, nodes, findNonOverlappingPosition]
   );
@@ -3484,7 +3500,7 @@ function WorkflowCanvas() {
     else if (type === 'loop-node') { x = 600; y = 150; }
 
     const labelMap = {
-      'prompt-source': '📖 故事剧本源',
+      'prompt-source': '📝 文本',
       'llm-service': '🧠 剧本专家',
       'image-service': '🎨 智能生图',
       'tts-service': '🗣️ 声音克隆',
@@ -3849,8 +3865,8 @@ function WorkflowCanvas() {
     let dataOutputs: any = {};
 
     if (targetType === 'prompt-source') {
-      label = '📖 故事剧本源';
-      dataInputs = { text: '派生的剧本内容...' };
+      label = '📝 文本';
+      dataInputs = { text: '派生的文本内容...' };
       dataOutputs = { output: '', text: '' };
     } else if (targetType === 'upload-node') {
       label = '📦 本地上传';
@@ -4548,7 +4564,11 @@ function WorkflowCanvas() {
       else if (n.type === 'custom-workflow-node') { w = 180; h = 180; }
       else if (n.type === 'grid-splitter') { w = 200; h = 200; }
       else if (n.type === 'llm-service') { w = 360; h = 320; }
-      else if (n.type === 'prompt-source') { w = 320; h = 280; }
+      else if (n.type === 'prompt-source') {
+        // PromptSourceNode uses NodeResizer; only provide defaults instead of resetting resized dimensions.
+        w = n.width ?? 320;
+        h = n.height ?? 280;
+      }
       return {
         ...n,
         width: w,
@@ -5338,7 +5358,7 @@ function WorkflowCanvas() {
 
                 {/* 大字体节点分类卡片 */}
                 {[
-                  { type: 'prompt-source', emoji: '📝', label: '故事剧本源', desc: '剧本故事原始文字输入源，连接 LLM 分镜专家节点', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' },
+                  { type: 'prompt-source', emoji: '📝', label: '文本', desc: '单纯的文本/剧本小说输入源，支持连线 LLM 分镜与画图等节点', color: '#a855f7', grad: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.03))' },
                   { type: 'image-service', emoji: '🎨', label: '图像', desc: 'Flux / SD / MiniMax 文生图，支持角色面部参考', color: '#10b981', grad: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.03))' },
                   { type: 'video-fusion', emoji: '🎥', label: '视频生成', desc: 'Vidu / Wan / FramePack 视频合成，支持音视频融合', color: '#f59e0b', grad: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.03))' },
                   { type: 'tts-service',  emoji: '🔊', label: '音频', desc: '声音克隆与旁白配音，极速锁定人物音色', color: '#0ea5e9', grad: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(14,165,233,0.03))' },
@@ -6398,7 +6418,7 @@ function WorkflowCanvas() {
 
           {[
             { type: 'upload-node', label: '📦 本地上传' },
-            { type: 'prompt-source', label: '📖 故事剧本源' },
+            { type: 'prompt-source', label: '📝 文本' },
             { type: 'image-service', label: '🎨 智能生图' },
             { type: 'tts-service', label: '🗣️ 声音克隆' },
             { type: 'video-fusion', label: '📹 视频生成' },
@@ -7250,7 +7270,7 @@ function WorkflowCanvas() {
                 <span style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(168, 85, 247, 1)', display: 'block', marginBottom: '8px' }}>⌨️ 键盘与鼠标快捷操作</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {[
-                    { keys: '鼠标双击画布空白处', action: '快速热新增 [📖 故事剧本源] 节点' },
+                    { keys: '鼠标双击画布空白处', action: '快速热新增 [📝 文本] 节点' },
                     { keys: '鼠标右键画布空白处', action: '弹出磨砂玻璃“添加节点”菜单' },
                     { keys: '鼠标右键点击节点', action: '呼出节点专属操作菜单 (复制/删除/下载等)' },
                     { keys: 'Ctrl + C', action: '复制当前鼠标悬浮或选中的节点' },
@@ -7364,7 +7384,7 @@ function WorkflowCanvas() {
           </div>
           {/* 首选智能推荐列表，如果推荐列表为空或者用户点击了“显示全部”，则列出所有 */}
           {((recommendList.length > 0 && !showAllOptions) ? recommendList : [
-            { type: 'prompt-source', label: '📖 故事剧本源' },
+            { type: 'prompt-source', label: '📝 文本' },
             { type: 'llm-service', label: '🧠 剧本分镜专家' },
             { type: 'image-service', label: '🎨 智能生图 Agent' },
             { type: 'tts-service', label: '🗣️ 声音克隆 Agent' },

@@ -1,8 +1,8 @@
 import React from 'react';
 import { ResolvedMedia } from '../../ResolvedMedia';
 import { WorkflowTextarea } from '../../WorkflowTextarea';
+import { ModelSelectPanel } from '../../ModelSelectPanel';
 import { useVideoNodeLogic } from './useVideoNodeLogic';
-import { getModelsForProvider } from '../../../hooks/useModelSelector';
 
 interface ConfigPanelProps {
   id: string;
@@ -165,6 +165,9 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
           left: calc(100% + 4px);
           top: 0;
           width: 170px;
+          max-height: min(360px, calc(100vh - 80px));
+          overflow-y: auto;
+          overscroll-behavior: contain;
           background: rgba(11, 15, 26, 0.98);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 8px;
@@ -436,7 +439,7 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
           className="popover-floating-card nodrag" 
           onMouseDown={(e) => e.stopPropagation()} 
           onTouchStart={(e) => e.stopPropagation()} 
-          style={{ width: '220px', left: '15%' }}
+          style={{ width: activeTab === 'aix' ? '220px' : '320px', left: '15%' }}
         >
           {activeTab === 'aix' ? (
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '6px' }}>
@@ -445,83 +448,20 @@ export default function ConfigPanel({ id, data, logic }: ConfigPanelProps) {
           ) : (
             <>
               <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                🤖 视频生成大模型服务商
+                🤖 视频模型
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-                {activeProviders.map(v => {
-                  // 使用统一的模型获取函数
-                  const finalModels = getModelsForProvider(v.id, 'video', settings);
-
-                  // 如果没有匹配的模型，显示禁用状态
-                  if (finalModels.length === 0) {
-                    return (
-                      <div 
-                        key={v.id} 
-                        className="hover-vendor-item"
-                        style={{ opacity: 0.5, cursor: 'default' }}
-                      >
-                        <span>{v.name}</span>
-                        <span style={{ fontSize: '8px', opacity: 0.3 }}>—</span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div 
-                      key={v.id}
-                      className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
-                      onClick={() => {
-                        handleInputChange('providerId', v.id);
-                        handleInputChange('model', finalModels[0] || '');
-                      }}
-                    >
-                      <span>{v.name}</span>
-                      <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
-
-                      {/* 二级级联模型列表 */}
-                      <div className="sub-model-list-hover">
-                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                          选择具体视频模型：
-                        </div>
-                        {finalModels.map((m: string) => (
-                          <button
-                            key={m}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleInputChange('providerId', v.id);
-                              handleInputChange('model', m);
-                              setActivePopover(null);
-                            }}
-                            style={{
-                              background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                              border: 'none',
-                              borderRadius: '4px',
-                              color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                              fontSize: '9.5px',
-                              padding: '4px 6px',
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              width: '100%',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
-                            onMouseLeave={(e) => {
-                              if (model !== m) e.currentTarget.style.background = 'transparent';
-                            }}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                        {finalModels.length === 0 && (
-                          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', padding: '8px', textAlign: 'center' }}>
-                            暂无可用模型
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ModelSelectPanel
+                capability="video"
+                providers={activeProviders as any}
+                settings={settings}
+                selectedProviderId={providerId}
+                selectedModel={model}
+                onSelect={(nextProviderId, nextModel) => {
+                  handleInputChange('providerId', nextProviderId);
+                  handleInputChange('model', nextModel);
+                  setActivePopover(null);
+                }}
+              />
             </>
           )}
         </div>

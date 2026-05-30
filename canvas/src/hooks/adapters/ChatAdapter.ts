@@ -24,6 +24,7 @@ function isVisionModel(model: string): boolean {
     m.includes('image') ||
     m.includes('gpt-4o') ||
     m.includes('gpt-4-turbo') ||
+    m.includes('gpt-5') ||
     m.includes('claude') ||
     m.includes('gemini')
   );
@@ -124,11 +125,23 @@ export async function executeChat(input: ChatExecuteInput): Promise<{
         if (!res.ok) {
           const text = await res.text();
           let msg = `HTTP ${res.status}`;
-          try { msg = JSON.parse(text).error || msg; } catch {}
-          throw Object.assign(new Error(msg), { status: res.status });
+          let detailStr = '';
+          try {
+            const parsed = JSON.parse(text);
+            msg = parsed.error || msg;
+            if (parsed.detail) {
+              detailStr = typeof parsed.detail === 'object' ? JSON.stringify(parsed.detail) : String(parsed.detail);
+            }
+          } catch {}
+          const fullErr = detailStr ? `${msg} (详情: ${detailStr})` : msg;
+          throw Object.assign(new Error(fullErr), { status: res.status });
         }
         const json = await res.json();
-        if (json.error) throw Object.assign(new Error(json.error), { status: res.status });
+        if (json.error) {
+          const detailStr = json.detail ? (typeof json.detail === 'object' ? JSON.stringify(json.detail) : String(json.detail)) : '';
+          const errMsg = detailStr ? `${json.error} (详情: ${detailStr})` : json.error;
+          throw Object.assign(new Error(errMsg), { status: res.status });
+        }
         if (json.choices?.[0]?.message?.content === undefined) {
           throw new Error(`API 返回格式异常: ${JSON.stringify(json).substring(0, 100)}`);
         }

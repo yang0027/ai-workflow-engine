@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Handle, Position, NodeResizer, useStore } from '@xyflow/react';
 import { ResolvedMedia } from '../../ResolvedMedia';
 import { WorkflowTextarea } from '../../WorkflowTextarea';
+import { ModelSelectPanel } from '../../ModelSelectPanel';
 import { useModelSelector, getModelsForProvider, Provider } from '../../../hooks/useModelSelector';
 import {
   PromptSourceNodeProps,
@@ -37,7 +38,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
     onProviderChange: (newProviderId) => {
       const firstModel = getModelsForVendor(newProviderId)[0] || '';
       setActiveVendor(newProviderId);
-      logic.doModelChange(firstModel);
+      logic.doProviderChange(newProviderId, firstModel);
     },
     onModelChange: (newModel) => {
       logic.doModelChange(newModel);
@@ -361,8 +362,8 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
           opacity: selected ? 1 : 0,
           pointerEvents: selected ? 'all' : 'none',
           visibility: selected ? 'visible' : 'hidden',
-          borderColor: logic.connectedImage ? 'rgba(168, 85, 247, 1)' : 'rgba(255,255,255,0.2)',
-          boxShadow: logic.connectedImage ? '0 0 10px rgba(168, 85, 247, 0.45)' : 'none'
+          borderColor: (logic.connectedImage || logic.connectedVideo) ? 'rgba(168, 85, 247, 1)' : 'rgba(255,255,255,0.2)',
+          boxShadow: (logic.connectedImage || logic.connectedVideo) ? '0 0 10px rgba(168, 85, 247, 0.45)' : 'none'
         }}
       >
         <span style={{ fontSize: '13px', pointerEvents: 'none', transform: 'translateY(-1.5px)', display: 'block', fontWeight: 'bold' }}>+</span>
@@ -516,14 +517,14 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
             <button
               onClick={() => setActivePopover(activePopover === 'reference' ? null : 'reference')}
-              title={logic.connectedImage ? "查看已连接参考图" : "关联左侧参考图"}
+              title={logic.connectedImage ? "查看已连接参考图" : (logic.connectedVideo ? "查看已连接视频" : "关联左侧参考图/视频")}
               style={{
                 width: '30px',
                 height: '30px',
                 borderRadius: '8px',
-                background: logic.connectedImage ? 'rgba(168, 85, 247, 0.1)' : 'rgba(255,255,255,0.03)',
-                border: logic.connectedImage ? '1.5px solid rgba(168, 85, 247, 0.7)' : '1px dashed rgba(255,255,255,0.15)',
-                color: logic.connectedImage ? '#c084fc' : 'rgba(255,255,255,0.4)',
+                background: (logic.connectedImage || logic.connectedVideo) ? 'rgba(168, 85, 247, 0.1)' : 'rgba(255,255,255,0.03)',
+                border: (logic.connectedImage || logic.connectedVideo) ? '1.5px solid rgba(168, 85, 247, 0.7)' : '1px dashed rgba(255,255,255,0.15)',
+                color: (logic.connectedImage || logic.connectedVideo) ? '#c084fc' : 'rgba(255,255,255,0.4)',
                 fontSize: '13px',
                 cursor: 'pointer',
                 display: 'flex',
@@ -534,7 +535,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
                 transition: 'all 0.2s'
               }}
             >
-              {logic.connectedImage ? '🖼️' : '＋'}
+              {logic.connectedImage ? '🖼️' : (logic.connectedVideo ? '🎥' : '＋')}
             </button>
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -573,7 +574,7 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 6px 16px rgba(168, 85, 247, 0.45)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(168, 85, 247, 0.3)'; }}
             >
-              {logic.generating ? '正在优化...' : (logic.connectedImage ? '开始反推' : '开始优化')}
+              {logic.generating ? '正在优化...' : ((logic.connectedImage || logic.connectedVideo) ? '开始反推' : '开始优化')}
             </button>
           </div>
 
@@ -623,93 +624,50 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
             </button>
           </div>
 
-          {/* Popovers 浮窗 */}
           {activePopover === 'model' && (
-            <div className="popover-floating-card" style={{ width: '220px', left: '15%' }}>
+            <div className="popover-floating-card" style={{ width: '320px', left: '15%' }}>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                🤖 选择大模型（当前：{logic.currentMode === 'text' ? '画布助手' : '音乐歌词'}）
+              </div>
               {logic.currentMode === 'text' ? (
-                <>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    🤖 通用语言大模型服务商
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {chatProviders.map(v => (
-                      <div
-                        key={v.id}
-                        className={`hover-vendor-item ${activeVendor === v.id ? 'active' : ''}`}
-                        onClick={() => {
-                          setActiveVendor(v.id);
-                          onModelChange(getModelsForVendor(v.id)[0] || '');
-                        }}
-                      >
-                        <span>{v.name}</span>
-                        <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
-
-                        <div className="sub-model-list-hover">
-                          <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                            选择具体模型：
-                          </div>
-                          {getModelsForVendor(v.id).map((m: string) => (
-                            <button
-                              key={m}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveVendor(v.id);
-                                handleVendorChange(v.id);
-                                onModelChange(m);
-                                logic.doModelChange(m);
-                                setActivePopover(null);
-                              }}
-                              style={{
-                                background: logic.selectedModel === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                                border: 'none',
-                                borderRadius: '4px',
-                                color: logic.selectedModel === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                                fontSize: '9.5px',
-                                padding: '4px 6px',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                width: '100%'
-                              }}
-                            >
-                              {m}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
+                <ModelSelectPanel
+                  capability="chat"
+                  providers={chatProviders}
+                  settings={logic.settings}
+                  selectedProviderId={activeVendor}
+                  selectedModel={logic.selectedModel}
+                  onSelect={(providerId, modelName) => {
+                    setActiveVendor(providerId);
+                    logic.doProviderChange(providerId, modelName);
+                    setActivePopover(null);
+                  }}
+                />
               ) : (
-                <>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    🎵 歌词音乐生成模型
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-                    {LYRIC_MODELS.map(m => (
-                      <button
-                        key={m}
-                        onClick={() => {
-                          logic.doModelChange(m);
-                          setActivePopover(null);
-                        }}
-                        style={{
-                          background: logic.selectedModel === m ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.02)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          color: logic.selectedModel === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                          fontSize: '9.5px',
-                          padding: '6px 8px',
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          width: '100%',
-                          transition: 'all 0.15s'
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                  {LYRIC_MODELS.map(m => (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        logic.doModelChange(m);
+                        setActivePopover(null);
+                      }}
+                      style={{
+                        background: logic.selectedModel === m ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.02)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: logic.selectedModel === m ? '#fff' : 'rgba(255,255,255,0.7)',
+                        fontSize: '9.5px',
+                        padding: '6px 8px',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        width: '100%',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}

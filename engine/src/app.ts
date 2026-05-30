@@ -245,6 +245,7 @@ fastify.get('/api/v1/engine/settings', async () => {
 fastify.put('/api/v1/engine/settings', async (request, reply) => {
   try {
     const body = request.body as any;
+    console.log('[engine settings PUT] model_cache:', JSON.stringify(body.model_cache)?.substring(0, 500));
     settingsService.saveSettings(body);
     return { success: true, message: '配置热更新已保存。' };
   } catch (err: any) {
@@ -317,13 +318,13 @@ fastify.delete('/api/v1/engine/skills/:id', async (request, reply) => {
 fastify.get('/api/v1/engine/workflow-templates', async () => {
   return {
     success: true,
-    templates: workflowTemplateService.listTemplates()
+    templates: await workflowTemplateService.listTemplates()
   };
 });
 
 fastify.get('/api/v1/engine/workflow-templates/:id', async (request, reply) => {
   const { id } = request.params as { id: string };
-  const template = workflowTemplateService.getTemplate(id);
+  const template = await workflowTemplateService.getTemplate(id);
   if (!template) {
     return reply.status(404).send({ error: 'Workflow template not found' });
   }
@@ -332,7 +333,7 @@ fastify.get('/api/v1/engine/workflow-templates/:id', async (request, reply) => {
 
 fastify.post('/api/v1/engine/workflow-templates/parse', async (request, reply) => {
   try {
-    const result = workflowTemplateService.parseTemplate(request.body as any);
+    const result = await workflowTemplateService.parseTemplate(request.body as any);
     return { success: true, ...result };
   } catch (err: any) {
     fastify.log.error(err);
@@ -342,7 +343,7 @@ fastify.post('/api/v1/engine/workflow-templates/parse', async (request, reply) =
 
 fastify.post('/api/v1/engine/workflow-templates', async (request, reply) => {
   try {
-    const template = workflowTemplateService.saveTemplate(request.body as any);
+    const template = await workflowTemplateService.saveTemplate(request.body as any);
     return { success: true, template };
   } catch (err: any) {
     fastify.log.error(err);
@@ -353,7 +354,7 @@ fastify.post('/api/v1/engine/workflow-templates', async (request, reply) => {
 fastify.put('/api/v1/engine/workflow-templates/:id', async (request, reply) => {
   try {
     const { id } = request.params as { id: string };
-    const template = workflowTemplateService.saveTemplate({ ...(request.body as any), id });
+    const template = await workflowTemplateService.saveTemplate({ ...(request.body as any), id });
     return { success: true, template };
   } catch (err: any) {
     fastify.log.error(err);
@@ -363,7 +364,7 @@ fastify.put('/api/v1/engine/workflow-templates/:id', async (request, reply) => {
 
 fastify.delete('/api/v1/engine/workflow-templates/:id', async (request, reply) => {
   const { id } = request.params as { id: string };
-  const deleted = workflowTemplateService.deleteTemplate(id);
+  const deleted = await workflowTemplateService.deleteTemplate(id);
   if (!deleted) {
     return reply.status(404).send({ error: 'Workflow template not found' });
   }
@@ -396,16 +397,32 @@ fastify.post('/api/v1/engine/llm/chat', async (request, reply) => {
       : messages;
 
     let cleanUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
-    const response = await axios.post(`${cleanUrl}/chat/completions`, {
+    
+    // 智能 Base URL 纠偏：确保以 /v1 或其他规范版本后缀结尾，防止因 settings 中漏填 v1 后缀导致 404 / 503
+    let apiUrl = cleanUrl;
+    if (apiUrl.includes('api.fish.audio/v1/tts')) {
+      apiUrl = apiUrl.replace('/v1/tts', '/v1');
+    } else if (apiUrl.includes('api.fish.audio') && !apiUrl.includes('/v1')) {
+      apiUrl = `${apiUrl}/v1`;
+    } else {
+      apiUrl = cleanUrl.endsWith('/v1') || cleanUrl.endsWith('/v3') || cleanUrl.endsWith('/v1/')
+        ? cleanUrl
+        : cleanUrl.includes('/v') 
+          ? cleanUrl
+          : `${cleanUrl}/v1`;
+    }
+
+    const response = await axios.post(`${apiUrl}/chat/completions`, {
       model: model,
       messages: finalMessages,
-      temperature: 0.7
+      temperature: 0.7,
+      stream: false
     }, {
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 20000
+      timeout: 120000
     });
 
     return response.data;

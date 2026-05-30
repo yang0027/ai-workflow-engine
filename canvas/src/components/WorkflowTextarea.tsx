@@ -109,8 +109,19 @@ export const WorkflowTextarea = React.forwardRef<HTMLTextAreaElement, WorkflowTe
       fontSize: '12px'
     };
 
+    const containerStyle: React.CSSProperties = {
+      position: 'relative',
+      width: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      flex: style?.flex,
+      height: style?.height,
+      minHeight: style?.minHeight,
+      maxHeight: style?.maxHeight
+    };
+
     return (
-      <div style={{ position: 'relative', width: '100%' }}>
+      <div style={containerStyle}>
         <style>{`
           .workflow-textarea::placeholder {
             color: rgba(255,255,255,0.4);

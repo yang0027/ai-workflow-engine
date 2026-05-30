@@ -28,7 +28,7 @@ export function useLLMStoryboardLogic({
   const isPromptConnected = connectedPrompt.length > 0;
 
   // 状态
-  const [chatModels, setChatModels] = useState<string[]>(['MiniMax-M2.7', 'MiniMax-M2.5', 'qwen-plus', 'deepseek-chat']);
+  const [chatModels] = useState<string[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [parsing, setParsing] = useState(false);
   const [parseResult, setParseResult] = useState('');
@@ -42,9 +42,6 @@ export function useLLMStoryboardLogic({
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
           setSettings(settingsData);
-          if (settingsData.model_cache?.chat) {
-            setChatModels(settingsData.model_cache.chat);
-          }
         }
 
         const skillsRes = await fetch('/api/v1/skills');
@@ -81,11 +78,9 @@ export function useLLMStoryboardLogic({
         if (n.id === id) {
           const newProviderId = currentProviderModels.includes(newModel)
             ? providerId
-            : (settings?.model_cache?.chat?.length > 0
-                ? Object.entries(settings.providers || {}).find(([pid, p]: [string, any]) =>
-                    p.enabled && settings.model_cache.chat.includes(newModel)
-                  )?.[0]
-                : null) || providerId;
+            : (Object.entries(settings?.providers || {}).find(([pid, p]: [string, any]) =>
+                p.enabled && (p as any).models?.includes(newModel)
+              )?.[0]) || providerId;
           return {
             ...n,
             data: {

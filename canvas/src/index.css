@@ -160,4 +160,8 @@ button:active {
   ry: 6px !important;
 }
 
+/* Keep blank canvas areas visually neutral; node headers/handles define their own cursors. */
+.react-flow__pane {
+  cursor: default !important;
+}
 

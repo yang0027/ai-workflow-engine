@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { RunningHubService } from '../../../services/runninghub.service';
-import { useModelSelector, MODEL_KEYWORDS } from '../../../hooks/useModelSelector';
+import { useModelSelector } from '../../../hooks/useModelSelector';
 import { useWorkflowSelector } from '../../../hooks/useWorkflowSelector';
 import { mapParams } from '../../../hooks/useParamMapper';
 import { getUpstreamData } from '../../../hooks/getUpstreamData';
@@ -123,7 +123,6 @@ export function useImageNodeLogic({
       setRunningHubTemplateId(data.inputs.runningHubTemplateId);
     }
   }, [data.inputs?.runningHubTemplateId]);
-  const [imageModels, setImageModels] = useState<string[]>(['flux-schnell', 'stable-diffusion-3.5', 'sdxl-turbo']);
   const [generating, setGenerating] = useState(false);
   const [generatedImg, setGeneratedImg] = useState(data.outputs?.image || '');
   const [settings, setSettings] = useState<any>(null);
@@ -190,9 +189,6 @@ export function useImageNodeLogic({
         if (res.ok) {
           const settingsData = await res.json();
           setSettings(settingsData);
-          if (settingsData.model_cache?.image) {
-            setImageModels(settingsData.model_cache.image);
-          }
         }
       } catch (e) {
         console.error('加载 ImageServiceNode 外部依赖失败:', e);
@@ -668,7 +664,6 @@ export function useImageNodeLogic({
     connectedImages,
     activeTab,
     runningHubTemplateId: wfSelector.currentWorkflow?.id || '',
-    imageModels,
     generating,
     generatedImg,
     settings,

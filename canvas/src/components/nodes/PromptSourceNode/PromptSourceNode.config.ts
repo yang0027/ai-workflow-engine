@@ -40,7 +40,7 @@ export const DOWNSTREAM_TYPES: DownstreamType[] = [
 export const LYRIC_MODELS = ['Suno-v3', 'Suno-v4', 'Chirp-v3.5', 'Llama-Lyrics-v2'];
 
 export const WORK_MODES = [
-  { id: 'text', label: '📝 智能文本/剧本' },
+  { id: 'text', label: '📝 文本' },
   { id: 'lyrics', label: '🎵 音乐歌词' }
 ];
 

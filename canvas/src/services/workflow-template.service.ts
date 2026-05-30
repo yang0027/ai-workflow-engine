@@ -110,18 +110,34 @@ export class WorkflowTemplateService {
   }
 
   private static async request(path: string, init: RequestInit = {}) {
-    const res = await fetch(`${GATEWAY_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init.headers || {}),
-      },
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      throw new Error(data.error || `请求失败: ${res.status}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    try {
+      const url = `${GATEWAY_URL}${path}`;
+      console.log('[WorkflowTemplateService] → GET', url);
+      const res = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init.headers || {}),
+        },
+      });
+      clearTimeout(timeoutId);
+      console.log('[WorkflowTemplateService] ← status', res.status, url);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `请求失败: ${res.status}`);
+      }
+      return data;
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        throw new Error('请求超时');
+      }
+      console.error('[WorkflowTemplateService] ✗', path, e.message, e.stack?.split('\n')[1]);
+      throw e;
     }
-    return data;
   }
 }
 

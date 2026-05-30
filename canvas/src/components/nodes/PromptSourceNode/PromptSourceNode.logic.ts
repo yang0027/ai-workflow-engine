@@ -20,6 +20,8 @@ export interface UsePromptSourceNodeLogicReturn {
   currentMode: string;
   connectedImage: string;
   connectedImageRef: { url: string; nodeId: string } | null;
+  connectedVideo: string;
+  connectedVideoRef: { url: string; nodeId: string } | null;
   localName: string;
   isEditingName: boolean;
   isEditing: boolean;
@@ -30,6 +32,7 @@ export interface UsePromptSourceNodeLogicReturn {
 
   // 业务方法
   handleTextChange: (val: string) => void;
+  doProviderChange: (providerId: string, modelName?: string) => void;
   doModelChange: (modelName: string) => void;
   handleGenerate: () => Promise<void>;
   handleSpawnImageService: () => void;
@@ -114,8 +117,34 @@ export function usePromptSourceNodeLogic({
     return null;
   }, [edges, nodes, id]);
 
+  // Connected upload video scanning — 返回 URL 和来源节点 ID
+  const connectedVideoRef = useMemo((): { url: string; nodeId: string } | null => {
+    const connectedEdges = edges.filter(e => e.target === id && e.targetHandle === 'input');
+    for (const edge of connectedEdges) {
+      const srcNode = nodes.find(n => n.id === edge.source);
+      if (!srcNode) continue;
+      const outputs = (srcNode.data?.outputs || {}) as any;
+      const inputs = (srcNode.data?.inputs || {}) as any;
+      const val = outputs.output || outputs.video || inputs.fileUrl || '';
+      if (!val || typeof val !== 'string') continue;
+
+      const uploadFileType = inputs?.fileType || outputs?.fileType;
+      const isVideo =
+        val.endsWith('.mp4') || val.endsWith('.webm') || val.endsWith('.mov') ||
+        val.startsWith('data:video/') ||
+        (val.includes('media-asset-') && val.includes('video')) ||
+        (srcNode.type === 'upload-node' && uploadFileType === 'video');
+
+      if (isVideo) {
+        return { url: val, nodeId: srcNode.id };
+      }
+    }
+    return null;
+  }, [edges, nodes, id]);
+
   // 兼容旧代码的便捷访问器
   const connectedImage = connectedImageRef?.url || '';
+  const connectedVideo = connectedVideoRef?.url || '';
 
   // 同步编辑状态
   const [isEditing, setIsEditing] = useState(false);
@@ -192,7 +221,7 @@ export function usePromptSourceNodeLogic({
     );
   }, [id, setNodes]);
 
-  const doModelChange = useCallback((modelName: string) => {
+  const doProviderChange = useCallback((providerId: string, modelName?: string) => {
     setNodes((nodes) =>
       nodes.map((n) => {
         if (n.id === id) {
@@ -202,7 +231,8 @@ export function usePromptSourceNodeLogic({
               ...n.data,
               inputs: {
                 ...((n.data as any)?.inputs || {}),
-                model: modelName
+                providerId,
+                ...(modelName !== undefined ? { model: modelName } : {})
               }
             }
           };
@@ -211,6 +241,31 @@ export function usePromptSourceNodeLogic({
       })
     );
   }, [id, setNodes]);
+
+  const doModelChange = useCallback((modelName: string) => {
+    setNodes((nodes) =>
+      nodes.map((n) => {
+        if (n.id === id) {
+          const newProviderId = Object.entries(settings?.providers || {}).find(([, provider]: [string, any]) =>
+            provider?.enabled && Array.isArray(provider?.models) && provider.models.includes(modelName)
+          )?.[0] || (n.data as any)?.inputs?.providerId || activeVendor;
+
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              inputs: {
+                ...((n.data as any)?.inputs || {}),
+                providerId: newProviderId,
+                model: modelName
+              }
+            }
+          };
+        }
+        return n;
+      })
+    );
+  }, [id, setNodes, settings, activeVendor]);
 
   const handleGenerate = useCallback(async () => {
     const textVal2 = data.inputs?.text || '';
@@ -225,10 +280,12 @@ export function usePromptSourceNodeLogic({
     setGenerating(true);
 
     try {
-      // systemPrompt 根据是否有图选择
-      const systemPrompt = hasImage
-        ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
-        : "你是一位顶级剧本与提示词优化大师。请对用户提供的原始剧本文本进行深度扩写与艺术化视觉提示词包装。";
+      // systemPrompt 根据是否有图或工作模式进行智能分流选择
+      const systemPrompt = currentMode === 'lyrics'
+        ? "你是一位顶级音乐作词人与 Suno 提示词结构专家。请根据用户提供的主题、情感或故事，创作结构完整且极具韵律感的中文歌词（包含 [Verse], [Chorus], [Bridge], [Outro] 等结构标记），并给出适合 Suno 生成该音乐的风格与情绪提示词。"
+        : (hasImage
+            ? "你是一位顶级 AI 图像提示词反推与润色专家。请根据用户提供的参考图反推出高质量的 Midjourney/Stable Diffusion 英文与中文生图提示词，要求画面富有电影感与视觉冲击力。"
+            : "你是一位全能的 AI 画布助手与提示词精炼专家。请对用户提供的任意文本进行智能优化、提炼、或者将其润色为符合工作流语境的高质量提示词。");
 
       const nodeInputsWithSystem = {
         ...data.inputs,
@@ -420,6 +477,8 @@ export function usePromptSourceNodeLogic({
     currentMode,
     connectedImage,
     connectedImageRef,
+    connectedVideo,
+    connectedVideoRef,
     localName,
     isEditingName,
     isEditing,
@@ -429,6 +488,7 @@ export function usePromptSourceNodeLogic({
     downstreamTypes: DOWNSTREAM_TYPES,
 
     handleTextChange,
+    doProviderChange,
     doModelChange,
     handleGenerate,
     handleSpawnImageService,
@@ -455,8 +515,6 @@ export function usePromptSourceNodeLogic({
                 inputs: {
                   ...((n.data as any)?.inputs || {}),
                   mode: modeId,
-                  model: modeId === 'text' ? 'deepseek-chat' : 'Suno-v4',
-                  text: ''
                 }
               }
             };

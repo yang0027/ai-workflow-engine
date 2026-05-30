@@ -1,5 +1,5 @@
 import React from 'react';
-import { MODEL_KEYWORDS, getModelsForProvider } from '../../../hooks/useModelSelector';
+import { ModelSelectPanel } from '../../ModelSelectPanel';
 import { ResolvedMedia } from '../../ResolvedMedia';
 import { WorkflowTextarea } from '../../WorkflowTextarea';
 
@@ -352,6 +352,9 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
             left: calc(100% + 4px);
             top: 0;
             width: 180px;
+            max-height: min(360px, calc(100vh - 80px));
+            overflow-y: auto;
+            overscroll-behavior: contain;
             background: rgba(11, 15, 26, 0.98);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -599,93 +602,29 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({
 
         {/* ---------------- Popover 浮窗 ---------------- */}
 
-        {/* Popover 1: 模型厂商及 Hover 级联 */}
+        {/* Popover 1: 模型选择 */}
         {activePopover === 'model' && (
           <div 
             className="popover-floating-card nodrag" 
             onMouseDown={(e) => e.stopPropagation()} 
             onTouchStart={(e) => e.stopPropagation()} 
-            style={{ width: '220px', left: '15%' }}
+            style={{ width: '320px', left: '15%' }}
           >
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              🌐 大模型生图驱动商
+              🌐 图像模型
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {activeProviders.map(v => {
-                // 使用统一的模型获取函数
-                const finalModels = getModelsForProvider(v.id, 'image', settings);
-
-                // 如果没有匹配的模型，显示禁用状态
-                if (finalModels.length === 0) {
-                  return (
-                    <div 
-                      key={v.id} 
-                      className="hover-vendor-item"
-                      style={{ opacity: 0.5, cursor: 'default' }}
-                    >
-                      <span>{v.name}</span>
-                      <span style={{ fontSize: '8px', opacity: 0.3 }}>—</span>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div 
-                    key={v.id} 
-                    className={`hover-vendor-item ${providerId === v.id ? 'active' : ''}`}
-                    onClick={() => {
-                      handleInputChange('providerId', v.id);
-                      handleInputChange('model', finalModels[0] || '');
-                    }}
-                  >
-                    <span>{v.name}</span>
-                    <span style={{ fontSize: '8px', opacity: 0.5 }}>▶</span>
-
-                    {/* 二级级联 */}
-                    <div className="sub-model-list-hover">
-                      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
-                        选择具体模型：
-                      </div>
-                      {finalModels.map((m: string) => (
-                        <button
-                          key={m}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleInputChange('providerId', v.id);
-                            handleInputChange('model', m);
-                            setActivePopover(null);
-                          }}
-                          style={{
-                            background: model === m ? 'rgba(168, 85, 247, 0.25)' : 'transparent',
-                            border: 'none',
-                            borderRadius: '4px',
-                            color: model === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                            fontSize: '9.5px',
-                            padding: '4px 6px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            width: '100%',
-                            transition: 'all 0.15s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)'}
-                          onMouseLeave={(e) => {
-                            if (model !== m) e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                      {finalModels.length === 0 && (
-                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', padding: '8px', textAlign: 'center' }}>
-                          暂无可用模型
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <ModelSelectPanel
+              capability="image"
+              providers={activeProviders as any}
+              settings={settings}
+              selectedProviderId={providerId}
+              selectedModel={model}
+              onSelect={(nextProviderId, nextModel) => {
+                handleInputChange('providerId', nextProviderId);
+                handleInputChange('model', nextModel);
+                setActivePopover(null);
+              }}
+            />
           </div>
         )}
 

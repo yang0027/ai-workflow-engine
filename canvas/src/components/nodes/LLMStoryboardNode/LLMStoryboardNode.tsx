@@ -56,7 +56,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
   const [showRightDerive, setShowRightDerive] = useState(false);
 
   const upstreamTypes = [
-    { type: 'prompt-source', label: '📖 故事剧本源' }
+    { type: 'prompt-source', label: '📝 文本' }
   ];
   const downstreamTypes = [
     { type: 'image-service', label: '🎨 智能生图 Agent' },
@@ -163,7 +163,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
             disabled={isPromptConnected}
             onChange={(val) => handleInputChange('prompt', val)}
             mentionItems={connectedPrompt ? [{ id: `${id}-upstream-prompt`, name: '上游文本输入', type: 'text', token: '@[文本1] ' }] : []}
-            placeholder="请输入剧本故事文本，或者将上游'故事剧本参数输入源'节点连接至左侧接口..."
+            placeholder="请输入剧本故事文本，或者将上游'文本'节点连接至左侧接口..."
             style={{
               height: '80px',
               background: isPromptConnected ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.3)',

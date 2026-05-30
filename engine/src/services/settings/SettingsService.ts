@@ -21,6 +21,9 @@ export interface ModelCache {
   image: string[];
   video: string[];
   tts: string[];
+  search?: string[];
+  other?: string[];
+  disabled?: string[];
 }
 
 export interface Settings {
@@ -57,18 +60,30 @@ export class SettingsService {
         this.memorySettings = {
           comfyui_instances: ['127.0.0.1:8188'],
           providers: {},
-          model_cache: { chat: [], image: [], video: [], tts: [] }
+          model_cache: { chat: [], image: [], video: [], tts: [], search: [], other: [], disabled: [] }
         };
         isChanged = true;
       }
 
       // 如果 model_cache 结构不全，则进行自愈补齐
       if (!this.memorySettings.model_cache) {
-        this.memorySettings.model_cache = { chat: [], image: [], video: [], tts: [] };
+        this.memorySettings.model_cache = { chat: [], image: [], video: [], tts: [], search: [], other: [], disabled: [] };
         isChanged = true;
       }
       if (!this.memorySettings.model_cache.tts) {
         this.memorySettings.model_cache.tts = [];
+        isChanged = true;
+      }
+      if (!this.memorySettings.model_cache.search) {
+        this.memorySettings.model_cache.search = [];
+        isChanged = true;
+      }
+      if (!this.memorySettings.model_cache.other) {
+        this.memorySettings.model_cache.other = [];
+        isChanged = true;
+      }
+      if (!this.memorySettings.model_cache.disabled) {
+        this.memorySettings.model_cache.disabled = [];
         isChanged = true;
       }
 
@@ -119,11 +134,11 @@ export class SettingsService {
       }
     } catch (e) {
       console.error('[SettingsService] 读取与扫描自愈配置文件失败:', e);
-      this.memorySettings = {
-        comfyui_instances: ['127.0.0.1:8188'],
-        providers: {},
-        model_cache: { chat: [], image: [], video: [], tts: [] }
-      };
+        this.memorySettings = {
+          comfyui_instances: ['127.0.0.1:8188'],
+          providers: {},
+          model_cache: { chat: [], image: [], video: [], tts: [], search: [], other: [], disabled: [] }
+        };
     }
   }
 
@@ -196,7 +211,15 @@ export class SettingsService {
     const updatedSettings: Settings = {
       comfyui_instances: newSettings.comfyui_instances || ['127.0.0.1:8188'],
       providers: finalizedProviders,
-      model_cache: newSettings.model_cache || current.model_cache
+      model_cache: {
+        chat: newSettings.model_cache?.chat || [],
+        image: newSettings.model_cache?.image || [],
+        video: newSettings.model_cache?.video || [],
+        tts: newSettings.model_cache?.tts || [],
+        search: newSettings.model_cache?.search || [],
+        other: newSettings.model_cache?.other || [],
+        disabled: newSettings.model_cache?.disabled || []
+      }
     };
 
     this.saveToFile(updatedSettings);
