@@ -578,7 +578,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       const res = await fetch('http://localhost:3000/api/v1/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({ ...settings, model_cache: { ...settings.model_cache, _initialized: true } })
       });
       if (res.ok) {
         alert('🎉 配置已成功保存并热更新加载生效！');

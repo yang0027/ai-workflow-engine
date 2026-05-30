@@ -176,9 +176,14 @@ export function useModelSelector({
       }
     }
 
-    // cache 为空时只返回 DEFAULT_MODELS（默认推荐模型），避免列表过长
-    const defaults = DEFAULT_MODELS[capability]?.[providerId] || [];
-    if (defaults.length > 0) return defaults;
+    // cache 为空时：已初始化过（用户故意清空）则返回空；未初始化过则用 DEFAULT_MODELS
+    if (settings?.model_cache?.[capability]?.length === 0) {
+      if (settings.model_cache._initialized) {
+        return [];
+      }
+      const defaults = DEFAULT_MODELS[capability]?.[providerId] || [];
+      if (defaults.length > 0) return defaults;
+    }
 
     // provider 不在 DEFAULT_MODELS 里，再从 settings 拉取
     if (!settings?.providers?.[providerId]) {
@@ -221,7 +226,7 @@ export function useModelSelector({
     // 模型不在当前 provider，搜索所有 enabled provider 找到它
     if (settings?.providers) {
       for (const [pid, p] of Object.entries(settings.providers)) {
-        if (p.enabled && getModelsForProvider(pid).includes(model)) {
+        if ((p as any).enabled && getModelsForProvider(pid).includes(model)) {
           onProviderChange?.(pid);
           onModelChange?.(model);
           return;
