@@ -629,46 +629,18 @@ export default function PromptSourceNode({ id, data, selected, style }: PromptSo
               <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 'bold', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 🤖 选择大模型（当前：{logic.currentMode === 'text' ? '画布助手' : '音乐歌词'}）
               </div>
-              {logic.currentMode === 'text' ? (
-                <ModelSelectPanel
-                  capability="chat"
-                  providers={chatProviders}
-                  settings={logic.settings}
-                  selectedProviderId={activeVendor}
-                  selectedModel={logic.selectedModel}
-                  onSelect={(providerId, modelName) => {
-                    setActiveVendor(providerId);
-                    logic.doProviderChange(providerId, modelName);
-                    setActivePopover(null);
-                  }}
-                />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-                  {LYRIC_MODELS.map(m => (
-                    <button
-                      key={m}
-                      onClick={() => {
-                        logic.doModelChange(m);
-                        setActivePopover(null);
-                      }}
-                      style={{
-                        background: logic.selectedModel === m ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.02)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        color: logic.selectedModel === m ? '#fff' : 'rgba(255,255,255,0.7)',
-                        fontSize: '9.5px',
-                        padding: '6px 8px',
-                        textAlign: 'center',
-                        cursor: 'pointer',
-                        width: '100%',
-                        transition: 'all 0.15s'
-                      }}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <ModelSelectPanel
+                capability="chat"
+                providers={chatProviders}
+                settings={logic.settings}
+                selectedProviderId={activeVendor}
+                selectedModel={logic.selectedModel}
+                onSelect={(providerId, modelName) => {
+                  setActiveVendor(providerId);
+                  logic.doProviderChange(providerId, modelName);
+                  setActivePopover(null);
+                }}
+              />
             </div>
           )}
 

@@ -195,6 +195,8 @@ export function useImageNodeLogic({
       }
     };
     loadSettings();
+    window.addEventListener('canvas-settings-updated', loadSettings);
+    return () => window.removeEventListener('canvas-settings-updated', loadSettings);
   }, []);
 
   // 使用统一的模型选择钩子
@@ -204,20 +206,10 @@ export function useImageNodeLogic({
     currentProviderId: providerId,
     currentModel: data.inputs?.model || '',
     onProviderChange: (newProviderId) => {
-      setNodes((nodes: any[]) => nodes.map((n) => {
-        if (n.id === id) {
-          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, providerId: newProviderId } } };
-        }
-        return n;
-      }));
+      handleInputChange('providerId', newProviderId);
     },
     onModelChange: (newModel) => {
-      setNodes((nodes: any[]) => nodes.map((n) => {
-        if (n.id === id) {
-          return { ...n, data: { ...n.data, inputs: { ...n.data.inputs, model: newModel } } };
-        }
-        return n;
-      }));
+      handleInputChange('model', newModel);
     }
   });
 
@@ -527,25 +519,30 @@ export function useImageNodeLogic({
             return;
           }
 
-          const res = await fetch('/api/v1/image/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          // 导入统一执行钩子以彻底修复 executeNode 被绕过的 P0 问题
+          const { executeNode } = await import('../../../hooks/executeNode');
+
+          const result = await executeNode({
+            nodeId: id,
+            nodeType: 'image-service',
+            mediaType: 'image',
+            actionType: 'generate',
+            upstreamData: upstreamData,
+            modelConfig: {
               providerId: providerId,
-              model: model,
+              modelId: model,
+            },
+            nodeInputs: {
+              ...data.inputs,
               prompt: processedPrompt,
               size: size,
               faceRef: resolvedFaceRef,
               refImages: resolvedRefImages
-            })
+            }
           });
 
-          const resData = await res.json();
-          if (resData.data?.[0]) {
-            const img = resData.data[0].b64_json 
-              ? `data:image/png;base64,${resData.data[0].b64_json}` 
-              : resData.data[0].url;
-            
+          if (result.success && result.data?.url) {
+            const img = result.data.url;
             setGeneratedImg(img);
             setNodes((nodes: any[]) =>
               nodes.map((n) => {
@@ -582,7 +579,7 @@ export function useImageNodeLogic({
               })
             );
           } else {
-            const errorReason = resData.error || '生图接口未返回有效图片成果。';
+            const errorReason = result.error?.message || '生图接口未返回有效图片成果。';
             throw new Error(errorReason);
           }
         }

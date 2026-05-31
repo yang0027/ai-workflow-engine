@@ -16,21 +16,15 @@ const CAPABILITY_CACHE_KEY: Record<ModelCapability, string> = {
 
 function modelCacheIncludes(list: string[] | undefined, providerId: string, model: string): boolean {
   if (!Array.isArray(list)) return false;
-  return list.includes(`${providerId}::${model}`) || list.includes(model);
-}
-
-function modelHasAnyManualCategory(settings: any, providerId: string, model: string): boolean {
-  const cache = settings?.model_cache;
-  if (!cache) return false;
-  return ['chat', 'image', 'video', 'tts', 'search', 'other'].some(category =>
-    modelCacheIncludes(cache[category], providerId, model)
-  );
+  const hasScopedEntries = list.some(item => item.includes('::'));
+  if (hasScopedEntries) return list.includes(`${providerId}::${model}`);
+  return list.includes(model);
 }
 
 function modelCacheHasAnyEntry(settings: any): boolean {
   const cache = settings?.model_cache;
   if (!cache) return false;
-  return ['chat', 'image', 'video', 'tts', 'search', 'other', 'disabled'].some(category =>
+  return ['chat', 'image', 'video', 'tts', 'search', 'other'].some(category =>
     Array.isArray(cache[category]) && cache[category].length > 0
   );
 }
@@ -38,12 +32,11 @@ function modelCacheHasAnyEntry(settings: any): boolean {
 function modelVisibleForCapability(settings: any, providerId: string, model: string, capability: ModelCapability): boolean {
   const cache = settings?.model_cache;
   if (!cache) return true;
-  if (modelCacheIncludes(cache.disabled, providerId, model)) return false;
 
   const category = CAPABILITY_CACHE_KEY[capability];
-  const hasAnyManualCategory = modelHasAnyManualCategory(settings, providerId, model);
+  // 节点菜单只认全局分流缓存的当前分类白名单。
+  // 例如 image 分类里只有 3 个，生图节点就只显示这 3 个。
   if (!modelCacheHasAnyEntry(settings)) return true;
-  if (!hasAnyManualCategory) return false;
   return modelCacheIncludes(cache[category], providerId, model);
 }
 

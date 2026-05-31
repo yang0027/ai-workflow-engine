@@ -15,11 +15,11 @@ interface ModelOption {
   label: string;
   providerId: string;
   providerName: string;
-  group: string;
+  family: string;
   disabled?: boolean;
 }
 
-function inferGroup(model: string, providerName: string) {
+function inferFamily(model: string) {
   const lower = model.toLowerCase();
   if (lower.includes('gpt') || lower.startsWith('o1') || lower.startsWith('o3')) return 'GPT 系列';
   if (lower.includes('claude')) return 'Claude 系列';
@@ -30,7 +30,7 @@ function inferGroup(model: string, providerName: string) {
   if (lower.includes('dall') || lower.includes('image')) return '图像模型';
   if (lower.includes('tts') || lower.includes('speech') || lower.includes('voice')) return 'TTS 模型';
   if (lower.includes('video') || lower.includes('kling') || lower.includes('luma') || lower.includes('vidu')) return '视频模型';
-  return providerName || '其他模型';
+  return '其他模型';
 }
 
 export function ModelSelectPanel({
@@ -52,7 +52,7 @@ export function ModelSelectPanel({
         label: model,
         providerId: provider.id,
         providerName: provider.name,
-        group: inferGroup(model, provider.name),
+        family: inferFamily(model),
       }));
     });
   }, [capability, providers, settings]);
@@ -64,15 +64,15 @@ export function ModelSelectPanel({
       model.id.toLowerCase().includes(q) ||
       model.label.toLowerCase().includes(q) ||
       model.providerName.toLowerCase().includes(q) ||
-      model.group.toLowerCase().includes(q)
+      model.family.toLowerCase().includes(q)
     );
   }, [keyword, models]);
 
   const groupedModels = useMemo(() => {
     const groups: Record<string, ModelOption[]> = {};
     filteredModels.forEach((model) => {
-      if (!groups[model.group]) groups[model.group] = [];
-      groups[model.group].push(model);
+      if (!groups[model.providerName]) groups[model.providerName] = [];
+      groups[model.providerName].push(model);
     });
     return Object.entries(groups);
   }, [filteredModels]);
@@ -150,7 +150,7 @@ export function ModelSelectPanel({
                       {item.label}
                     </span>
                     <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.35)', maxWidth: '82px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.providerName}
+                      {item.family}
                     </span>
                   </button>
                 );

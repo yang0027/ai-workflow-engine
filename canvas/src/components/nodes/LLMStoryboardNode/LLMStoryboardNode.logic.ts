@@ -149,20 +149,29 @@ export function useLLMStoryboardLogic({
       const selectedSkill = skills.find(s => s.id === (data.inputs?.skillId || 'storyboard-expert'));
       const systemPrompt = selectedSkill ? selectedSkill.systemPrompt : '你是一位分镜专家，请将剧本拆解为镜头描述。';
 
-      const res = await fetch('/api/v1/llm/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 导入统一执行钩子以完全修复 executeNode 被绕过的 P0 问题
+      const { executeNode } = await import('../../../hooks/executeNode');
+
+      const result = await executeNode({
+        nodeId: id,
+        nodeType: 'llm-storyboard',
+        mediaType: 'text',
+        actionType: 'chat',
+        upstreamData: upstreamData,
+        modelConfig: {
           providerId: providerId,
-          model: model || 'MiniMax-M2.1',
-          messages: [{ role: 'user', content: finalPrompt }],
-          systemPrompt
-        })
+          modelId: model || 'MiniMax-M2.1',
+        },
+        nodeInputs: {
+          ...data.inputs,
+          prompt: finalPrompt,
+          systemPrompt,
+          temperature: data.inputs?.temperature ?? 0.7
+        }
       });
 
-      const resData = await res.json();
-      if (res.ok && resData.choices?.[0]?.message?.content) {
-        const content = resData.choices[0].message.content;
+      if (result.success && result.data?.content) {
+        const content = result.data.content;
         setParseResult(content);
         // 保存输出结果供下游节点连线读取，双写 storyboard 与 output
         setNodes((nodes: any[]) =>
@@ -197,7 +206,7 @@ export function useLLMStoryboardLogic({
           })
         );
       } else {
-        const errorReason = resData.error || resData.message || '接口返回了无效的大模型数据';
+        const errorReason = result.error?.message || '接口返回了无效的大模型数据';
         setParseResult(`解析失败：${errorReason}`);
         const displayModel = model || data.inputs?.model || 'MiniMax-M2.1';
 

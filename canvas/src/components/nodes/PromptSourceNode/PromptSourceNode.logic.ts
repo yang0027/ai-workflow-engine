@@ -63,10 +63,15 @@ export function usePromptSourceNodeLogic({
   // settings 用于模型选择器（provider/model 列表）
   const [settings, setSettings] = useState<any>(null);
   useEffect(() => {
-    fetch('/api/v1/settings')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => data && setSettings(data))
-      .catch(() => {});
+    const loadSettings = () => {
+      fetch('/api/v1/settings')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => data && setSettings(data))
+        .catch(() => {});
+    };
+    loadSettings();
+    window.addEventListener('canvas-settings-updated', loadSettings);
+    return () => window.removeEventListener('canvas-settings-updated', loadSettings);
   }, []);
 
   // 表格编辑器状态

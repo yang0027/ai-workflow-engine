@@ -1,4 +1,4 @@
-const GATEWAY_URL = '/';
+const GATEWAY_URL = '';
 
 export type WorkflowTemplateSource = 'local_comfyui' | 'runninghub';
 export type WorkflowTemplateCapability = 'image' | 'video' | 'audio' | 'workflow';
@@ -140,4 +140,3 @@ export class WorkflowTemplateService {
     }
   }
 }
-

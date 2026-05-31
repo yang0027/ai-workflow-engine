@@ -14,12 +14,24 @@
 import axios from 'axios';
 import { ImageGenerateResult } from '../imageRegistry.js';
 
-// 配置从 settings.json 读取，本文件硬编码用于快速验证
-// 实际使用时应从 provider config 动态读取
-const NEW_API_URL = 'https://api.zhangvip.top';
-const NEW_API_KEY = 'Wgxda0oQv9JC8jr9k5F9mxulEULAnlBOyjOUnahJpvnX4HTF';
-const APIMART_URL = 'https://api.apimart.ai';
-const APIMART_KEY = process.env.APIMART_IMAGE_KEY ?? 'sk-XKmOcWpKi9bDk4fzb5WFkajbUHZeXrxBxLj9F9WtcjNtjoJJ';
+import { SettingsService } from '../../settings/SettingsService.js';
+
+// 🧬 彻底消灭硬编码 API 凭证以避开盗刷风险，改为在运行时动态安全读取
+function getDynamicCredentials() {
+  const settings = SettingsService.getInstance();
+  
+  // 智能适配：自动在全局配置中扫描 'ai小栈'、'apimart' 或 'ali' 中任意可用的中转平台 Key
+  const aiStackConfig = settings.getRawProviderConfig('ai小栈') || settings.getRawProviderConfig('ali');
+
+  const customUrl = aiStackConfig?.baseUrl ? (aiStackConfig.baseUrl.endsWith('/') ? aiStackConfig.baseUrl.slice(0, -1) : aiStackConfig.baseUrl) : '';
+
+  return {
+    NEW_API_URL: customUrl || process.env.NEW_API_URL || 'https://api.zhangvip.top',
+    NEW_API_KEY: aiStackConfig?.apiKey || process.env.NEW_API_KEY || '',
+    APIMART_URL: 'https://api.apimart.ai',
+    APIMART_KEY: process.env.APIMART_IMAGE_KEY || aiStackConfig?.apiKey || ''
+  };
+}
 
 export interface NewAPIImageOptions {
   model: string;
@@ -32,7 +44,8 @@ export interface NewAPIImageOptions {
 export async function generateImage(
   opts: NewAPIImageOptions
 ): Promise<ImageGenerateResult> {
-  const { model, prompt, size = '1024x1024', n = 1, apimartKey = APIMART_KEY } = opts;
+  const creds = getDynamicCredentials();
+  const { model, prompt, size = '1024x1024', n = 1, apimartKey = creds.APIMART_KEY } = opts;
 
   // Step 1: 提交到 NewAPI（计费）
   const taskId = await submitTask(model, prompt, size, n);
@@ -49,12 +62,13 @@ async function submitTask(
   size: string,
   n: number
 ): Promise<string> {
-  const url = `${NEW_API_URL}/v1/images/generations`;
+  const creds = getDynamicCredentials();
+  const url = `${creds.NEW_API_URL}/v1/images/generations`;
   const body = { model, prompt, size, n };
 
   const response = await axios.post(url, body, {
     headers: {
-      Authorization: `Bearer ${NEW_API_KEY}`,
+      Authorization: `Bearer ${creds.NEW_API_KEY}`,
       'Content-Type': 'application/json',
     },
     timeout: 30000,
@@ -81,13 +95,14 @@ async function submitTask(
 }
 
 async function pollTask(taskId: string, apimartKey: string): Promise<string> {
+  const creds = getDynamicCredentials();
   if (!apimartKey) {
     throw new Error(
       'APIMART_KEY 未设置，请在 settings.json 中配置 apimartKey 或设置环境变量 APIMART_IMAGE_KEY'
     );
   }
 
-  const url = `${APIMART_URL}/v1/tasks/${taskId}`;
+  const url = `${creds.APIMART_URL}/v1/tasks/${taskId}`;
   // 图片约 3-5 分钟，视频约 5-15 分钟，统一给足 60 分钟（3600s / 6s ≈ 600 次）
   const maxAttempts = 600;
   const intervalMs = 6000;

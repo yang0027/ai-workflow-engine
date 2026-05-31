@@ -236,6 +236,8 @@ export function useVideoNodeLogic({
       }
     };
     loadSettings();
+    window.addEventListener('canvas-settings-updated', loadSettings);
+    return () => window.removeEventListener('canvas-settings-updated', loadSettings);
   }, []);
 
   // 使用统一的模型选择钩子
@@ -576,27 +578,45 @@ export function useVideoNodeLogic({
           return;
         }
 
-        const res = await fetch('/api/v1/workflow/video/fusion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // 导入统一执行钩子以彻底修复 executeNode 被绕过的 P0 问题
+        const { executeNode } = await import('../../../hooks/executeNode');
+
+        const result = await executeNode({
+          nodeId: id,
+          nodeType: 'video-fusion',
+          mediaType: 'video',
+          actionType: 'fusion',
+          upstreamData: {
+            text: finalPrompt,
+            texts: [finalPrompt],
+            image: finalImage,
+            images: [finalImage],
+            video: finalVideo,
+            videos: [finalVideo],
+            audio: finalAudio,
+            audios: [finalAudio],
+            all: []
+          },
+          modelConfig: {
+            providerId: providerId,
+            modelId: model,
+          },
+          nodeInputs: {
+            ...data.inputs,
+            prompt: finalPrompt,
             imageBase64: finalImage,
             audioBase64: finalAudio,
+            refVideo: finalVideo,
             width: data.inputs?.width || 1024,
             height: data.inputs?.height || 1024,
-            duration: data.inputs?.duration || 5,
-            providerId: providerId,
-            model: model,
-            prompt: finalPrompt,
-            refVideo: finalVideo
-          })
+            duration: data.inputs?.duration || 5
+          }
         });
 
-        const resData = await res.json();
-        if (res.ok && resData.success && resData.videoUrl) {
-          const video = resData.videoUrl.startsWith('http') 
-            ? resData.videoUrl 
-            : `http://localhost:4000${resData.videoUrl}`;
+        if (result.success && result.data?.url) {
+          const video = result.data.url.startsWith('http') 
+            ? result.data.url 
+            : `http://localhost:4000${result.data.url}`;
           
           setFusedVideo(video);
 
@@ -633,7 +653,7 @@ export function useVideoNodeLogic({
             })
           );
         } else {
-          const errorReason = resData.error || resData.message || '未生成视频链接';
+          const errorReason = result.error?.message || '未生成视频链接';
           throw new Error(errorReason);
         }
       }

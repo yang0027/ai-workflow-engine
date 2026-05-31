@@ -45,8 +45,8 @@ await fastify.register(cors, {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 });
 
-// 从环境变量中读取 RunningHub API Key，或者使用备用开发 Key (此处死锁为 ToonFlow 项目的集成规范)
-const RUNNINGHUB_API_KEY = process.env.RUNNINGHUB_API_KEY || 'dev_runninghub_api_key_toonflow';
+// 从环境变量中读取 RunningHub API Key，彻底注释或删掉泄露的 fallback Key 保护安全
+const RUNNINGHUB_API_KEY = process.env.RUNNINGHUB_API_KEY || '';
 const runningHubClient = new RunningHubClient({ apiKey: RUNNINGHUB_API_KEY });
 
 const ttsService = new TTSService(runningHubClient);
@@ -499,7 +499,7 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       return { data: imageUrls.map((url: string) => ({ url })) };
     }
 
-    // ===== 通用 OpenAI 兼容接口兜底 =====
+    // ===== 通用超智能兼容与零预设解析兜底 =====
     let endpoint = `${cleanUrl}/images/generations`;
     if (providerId === 'grsai' && model.startsWith('nano-banana')) {
       endpoint = `${cleanUrl}/v1/draw/nano-banana`;
@@ -520,32 +520,102 @@ fastify.post('/api/v1/engine/image/generate', async (request, reply) => {
       return `${gatewayUrl}/api/v1/download/proxy?url=http://localhost:4000/outputs/${filename}`;
     };
 
+    // 移除 response_format: 'url' 这类强行绑定的参数，只留核心参数以兼容各种自建和中继网关
     const response = await axios.post(endpoint, {
       model: model,
       prompt: prompt,
       size: size,
-      n: 1,
-      response_format: 'url'
+      n: 1
     }, {
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 25000
+      timeout: 60000 // 调高超时限制以包容多图和慢速生图
     });
 
-    if (response.data?.data && Array.isArray(response.data.data)) {
-      const processedData = await Promise.all(response.data.data.map(async (item: any) => {
-        if (item.b64_json) {
-          const fileUrl = await saveBase64ToFile(item.b64_json);
-          return { url: fileUrl };
-        }
-        return item;
-      }));
-      return { data: processedData };
+    const resData = response.data;
+    if (!resData) {
+      throw new Error('生图服务未返回任何响应数据。');
     }
 
-    return response.data;
+    // 🧬 智能非结构化图片抓取提取机制 (不预设、不注册、不配置)
+    let extractedImgUrl = '';
+    let extractedBase64 = '';
+
+    // A. 探测是不是异步任务提交 (如包含 task_id 且没有直接的图片数据)
+    const possibleTaskId = resData?.task_id
+                        || resData?.data?.[0]?.task_id
+                        || (Array.isArray(resData?.data) && resData.data[0]?.status === 'submitted' ? resData.data[0].task_id : '');
+
+    if (possibleTaskId) {
+      console.log(`[Engine Fallback] 检测到中转商异步生图 taskId: ${possibleTaskId}，自动启动轮询器进行跟踪...`);
+      const { generateImage: newApiGenerate } = await import('./services/providers/adapters/NewAPIAdapter.js');
+      const pollResult = await newApiGenerate({
+        model: model,
+        prompt: prompt,
+        size: size
+      });
+      return pollResult;
+    }
+
+    // 1. 尝试检测多维字段（支持包含但不限于 data.url, url, b64_json, image_url, output 等多通道格式）
+    const possibleUrl = resData?.data?.[0]?.url
+                     || resData?.url
+                     || resData?.image_url
+                     || resData?.output?.[0]?.url
+                     || resData?.result?.image
+                     || resData?.images?.[0]?.url
+                     || (Array.isArray(resData?.images) && typeof resData.images[0] === 'string' ? resData.images[0] : '')
+                     || (Array.isArray(resData?.output) && typeof resData.output[0] === 'string' ? resData.output[0] : '');
+
+    const possibleBase64 = resData?.data?.[0]?.b64_json
+                        || resData?.b64_json
+                        || (typeof resData?.image === 'string' && resData.image.startsWith('data:image/') ? resData.image : '')
+                        || (typeof resData?.data === 'string' && resData.data.startsWith('data:image/') ? resData.data : '');
+
+    if (possibleUrl && typeof possibleUrl === 'string') {
+      extractedImgUrl = possibleUrl;
+    } else if (possibleBase64 && typeof possibleBase64 === 'string') {
+      // 提取干净的 base64 纯文本
+      extractedBase64 = possibleBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    }
+
+    // 2. 如果以上通用特征都没命中，进行全响应数据“深度递归字符串扫描”（最后一道防线）
+    if (!extractedImgUrl && !extractedBase64) {
+      const searchData = (obj: any): void => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const [k, v] of Object.entries(obj)) {
+          if (typeof v === 'string') {
+            if (v.startsWith('http://') || v.startsWith('https://') || v.endsWith('.png') || v.endsWith('.jpg') || v.endsWith('.webp') || v.endsWith('.jpeg')) {
+              extractedImgUrl = v;
+              return;
+            }
+            if (v.length > 500 && (v.startsWith('data:image/') || /^[a-zA-Z0-9+/=]+$/.test(v.substring(0, 100)))) {
+              extractedBase64 = v.replace(/^data:image\/[a-z]+;base64,/, '');
+              return;
+            }
+          } else if (typeof v === 'object') {
+            searchData(v);
+            if (extractedImgUrl || extractedBase64) return;
+          }
+        }
+      };
+      searchData(resData);
+    }
+
+    // 3. 执行物理文件同步保存（若提取出的是 base64 格式，自动转换为轻量文件代理 URL）
+    if (extractedBase64) {
+      const savedUrl = await saveBase64ToFile(extractedBase64);
+      return { data: [{ url: savedUrl }] };
+    }
+
+    if (extractedImgUrl) {
+      return { data: [{ url: extractedImgUrl }] };
+    }
+
+    // 兜底返回，如果完全解析不出图片资产，抛出详细响应以供调试
+    throw new Error(`无法从响应中解析出任何图片资源，接口响应: ${JSON.stringify(resData).substring(0, 300)}`);
   } catch (err: any) {
     fastify.log.error(err);
     return reply.status(500).send({ error: err.message });

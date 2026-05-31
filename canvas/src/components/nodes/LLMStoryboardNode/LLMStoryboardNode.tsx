@@ -6,6 +6,7 @@ import { Handle, Position, useReactFlow, useStore, useNodes } from '@xyflow/reac
 import { useLLMStoryboardLogic } from './LLMStoryboardNode.logic';
 import { LLMStoryboardNodeProps } from './LLMStoryboardNode.config';
 import { WorkflowTextarea } from '../../WorkflowTextarea';
+import { ModelSelectPanel } from '../../ModelSelectPanel';
 
 export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardNodeProps) {
   const { setNodes, deleteElements } = useReactFlow();
@@ -54,6 +55,7 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
   // 3. 智能管线导流舱菜单状态
   const [showLeftDerive, setShowLeftDerive] = useState(false);
   const [showRightDerive, setShowRightDerive] = useState(false);
+  const [showModelPanel, setShowModelPanel] = useState(false);
 
   const upstreamTypes = [
     { type: 'prompt-source', label: '📝 文本' }
@@ -175,49 +177,62 @@ export default function LLMStoryboardNode({ id, data, selected }: LLMStoryboardN
         </div>
 
         {/* 属性配置 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <div>
-            <span style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'block', marginBottom: '4px' }}>大模型服务商:</span>
-            <select
-              value={providerId}
-              onChange={(e) => handleInputChange('providerId', e.target.value)}
+        <div style={{ position: 'relative' }}>
+          <span style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'block', marginBottom: '4px' }}>对话模型:</span>
+          <button
+            className="nodrag"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setShowModelPanel(!showModelPanel)}
+            style={{
+              width: '100%',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '4px',
+              padding: '6px 8px',
+              color: '#fff',
+              fontSize: '11px',
+              outline: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px'
+            }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model || '请选择模型'}</span>
+            <span style={{ color: 'rgba(255,255,255,0.45)', flexShrink: 0 }}>▼</span>
+          </button>
+
+          {showModelPanel && (
+            <div
+              className="nodrag"
+              onMouseDown={(e) => e.stopPropagation()}
               style={{
-                width: '100%',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '4px',
-                padding: '4px 6px',
-                color: '#fff',
-                fontSize: '11px',
-                outline: 'none'
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                right: 0,
+                zIndex: 3000,
+                background: 'rgba(11, 15, 26, 0.98)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '10px',
+                padding: '10px',
+                boxShadow: '0 12px 28px rgba(0,0,0,0.45)'
               }}
             >
-              {activeProviders.map(p => (
-                <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <span style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', display: 'block', marginBottom: '4px' }}>对话模型:</span>
-            <select
-              value={model}
-              onChange={(e) => handleInputChange('model', e.target.value)}
-              style={{
-                width: '100%',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '4px',
-                padding: '4px 6px',
-                color: '#fff',
-                fontSize: '11px',
-                outline: 'none'
-              }}
-            >
-              {currentProviderModels.map((m: string, i: number) => (
-                <option key={i} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
+              <ModelSelectPanel
+                capability="chat"
+                providers={activeProviders as any}
+                settings={logic.settings}
+                selectedProviderId={providerId}
+                selectedModel={model}
+                onSelect={(nextProviderId, nextModel) => {
+                  handleInputChange('providerId', nextProviderId);
+                  handleInputChange('model', nextModel);
+                  setShowModelPanel(false);
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '8px' }}>

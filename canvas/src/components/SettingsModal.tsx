@@ -244,7 +244,8 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       // 添加到目标分类
       const targetList = Array.isArray(newCache[targetCategory]) ? newCache[targetCategory] : [];
       newCache[targetCategory] = [...targetList, modelKey];
-      const updated = { ...prev, model_cache: newCache };
+      const normalizedCache = normalizeModelCache(newCache);
+      const updated = { ...prev, model_cache: normalizedCache };
       console.log('[moveModelToCategory] newCache=', JSON.stringify(newCache));
       // 立即保存到后端
       fetch('/api/v1/settings', {
@@ -263,7 +264,28 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated)
-    }).catch(e => console.error('保存模型缓存失败:', e));
+    })
+      .then(() => window.dispatchEvent(new CustomEvent('canvas-settings-updated')))
+      .catch(e => console.error('保存模型缓存失败:', e));
+  };
+
+  const normalizeModelCache = (cache: ModelCache): ModelCache => {
+    const next = JSON.parse(JSON.stringify(cache)) as ModelCache;
+    (Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[]).forEach(category => {
+      const list = Array.isArray(next[category]) ? next[category] : [];
+      next[category] = Array.from(new Set(list.flatMap(entry => {
+        if (entry.includes('::')) return [entry];
+        const matches = allAvailableModels.filter(item => item.modelName === entry);
+        return matches.length > 0 ? matches.map(getModelCacheKey) : [entry];
+      })));
+    });
+    const disabled = Array.isArray(next.disabled) ? next.disabled : [];
+    next.disabled = Array.from(new Set(disabled.flatMap(entry => {
+      if (entry.includes('::')) return [entry];
+      const matches = allAvailableModels.filter(item => item.modelName === entry);
+      return matches.length > 0 ? matches.map(getModelCacheKey) : [entry];
+    })));
+    return next;
   };
 
   // 1. 获取配置数据
@@ -1558,7 +1580,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                           paddingRight: '6px'
                         }}>
                           {filteredModels.map((item: any, index: number) => {
-                            const isActive = !modelCacheIncludes(settings.model_cache.disabled, item);
+                            const isActive = modelCacheIncludes(settings.model_cache[cacheSubTab], item);
                             const isRecommended = isRecommendedModel(item.modelName, item.providerId);
                             const isNew = isNewModel(item.modelName);
                             const cachedCategory = getCachedModelCategory(item, settings.model_cache);
@@ -1581,16 +1603,17 @@ export default function SettingsModal({ isOpen, onClose, initialTab }: SettingsM
                                   cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                  const currentCache = { ...settings.model_cache, disabled: [...(settings.model_cache.disabled || [])] };
+                                  const currentCache = { ...settings.model_cache };
                                   const modelKey = getModelCacheKey(item);
-                                  const list = [...(currentCache.disabled || [])];
+                                  const list = [...(currentCache[cacheSubTab] || [])];
                                   if (isActive) {
-                                    currentCache.disabled = Array.from(new Set([...list, modelKey]));
+                                    currentCache[cacheSubTab] = list.filter(m => m !== item.modelName && m !== modelKey);
                                   } else {
-                                    currentCache.disabled = list.filter(m => m !== item.modelName && m !== modelKey);
+                                    currentCache[cacheSubTab] = Array.from(new Set([...list, modelKey]));
                                   }
-                                  setSettings({ ...settings, model_cache: currentCache });
-                                  saveModelCache(currentCache);
+                                  const normalizedCache = normalizeModelCache(currentCache);
+                                  setSettings({ ...settings, model_cache: normalizedCache });
+                                  saveModelCache(normalizedCache);
                                 }}
                               >
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '75%', pointerEvents: 'none' }}>

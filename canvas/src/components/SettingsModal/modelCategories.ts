@@ -24,7 +24,9 @@ export function modelCacheIncludes(list: string[] | undefined, model: { provider
   if (!Array.isArray(list)) return false;
   if (typeof model === 'string') return list.includes(model);
   const key = getModelCacheKey(model);
-  return list.includes(key) || list.includes(model.modelName);
+  const hasScopedEntries = list.some(item => item.includes('::'));
+  if (hasScopedEntries) return list.includes(key);
+  return list.includes(model.modelName);
 }
 
 // 模型分类标签配置
@@ -109,11 +111,9 @@ export function filterModelsByCategory(
   if (category === 'all') return models;
   return models.filter(item => {
     if (modelCache) {
-      const hasAnyManualCategory = (Object.keys(MODEL_CATEGORY_CONFIG) as ModelCategory[])
-        .some(cat => modelCacheIncludes(modelCache[cat], item));
-      if (hasAnyManualCategory) {
-        return modelCacheIncludes(modelCache[category], item);
-      }
+      // 管理页展示候选池：手动放入当前分类的模型 + 按名称规则推断属于当前分类的模型。
+      // 开关只决定是否写入当前分类，不决定是否从管理页候选列表消失。
+      if (modelCacheIncludes(modelCache[category], item)) return true;
     }
     return getModelCategory(item.modelName) === category;
   });

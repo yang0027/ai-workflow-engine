@@ -137,6 +137,8 @@ export function useTTSNodeLogic({
       }
     };
     loadSettings();
+    window.addEventListener('canvas-settings-updated', loadSettings);
+    return () => window.removeEventListener('canvas-settings-updated', loadSettings);
   }, []);
 
   // 使用统一的模型选择钩子
@@ -409,26 +411,44 @@ export function useTTSNodeLogic({
           return;
         }
 
-        const res = await fetch('/api/v1/workflow/tts/clone', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // 导入统一执行钩子以彻底修复 executeNode 被绕过的 P0 问题
+        const { executeNode } = await import('../../../hooks/executeNode');
+
+        const result = await executeNode({
+          nodeId: id,
+          nodeType: 'tts-service',
+          mediaType: 'audio',
+          actionType: 'tts',
+          upstreamData: {
+            text: finalText,
+            texts: [finalText],
+            image: '',
+            images: [],
+            video: '',
+            videos: [],
+            audio: resolvedRefAudio,
+            audios: [resolvedRefAudio],
+            all: []
+          },
+          modelConfig: {
+            providerId: providerId,
+            modelId: model,
+          },
+          nodeInputs: {
+            ...data.inputs,
             audioBase64: resolvedRefAudio,
             characterName: characterName,
             text: finalText,
-            providerId: providerId,
-            model: model,
-            referenceId: referenceId, // 无损传递音色声音 ID (reference_id)
+            referenceId: referenceId,
             mode: mode,
             workflowIdOrJson: workflowIdOrJson
-          })
+          }
         });
 
-        const resData = await res.json();
-        if (resData.success && resData.audioUrl) {
-          const audio = resData.audioUrl.startsWith('http') 
-            ? resData.audioUrl 
-            : `http://localhost:4000${resData.audioUrl}`;
+        if (result.success && result.data?.url) {
+          const audio = result.data.url.startsWith('http') 
+            ? result.data.url 
+            : `http://localhost:4000${result.data.url}`;
           
           setClonedAudio(audio);
 
@@ -465,7 +485,7 @@ export function useTTSNodeLogic({
             })
           );
         } else {
-          const errorReason = resData.error || '未生成音频链接';
+          const errorReason = result.error?.message || '未生成音频链接';
           throw new Error(errorReason);
         }
       }
